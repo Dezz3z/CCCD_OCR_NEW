@@ -1,0 +1,194 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "COCAS Validation Test Cases",
+  "description": "Shared validation cases for pytest (backend) and vitest (frontend)",
+  "version": "1.0.0",
+  "lastUpdated": "2026-08-11",
+  "cases": {
+    "citizen_id": {
+      "description": "Citizen ID (CCCD) validation cases",
+      "valid": [
+        {
+          "value": "001234567890",
+          "description": "Valid 12-digit ID"
+        },
+        {
+          "value": "123456789012",
+          "description": "Another valid ID"
+        }
+      ],
+      "invalid": [
+        {
+          "value": "00123456789",
+          "description": "Too short (11 digits)"
+        },
+        {
+          "value": "0012345678901",
+          "description": "Too long (13 digits)"
+        },
+        {
+          "value": "ABC234567890",
+          "description": "Contains letters"
+        }
+      ]
+    },
+    "vietnamese_phone": {
+      "description": "Vietnamese phone number validation cases",
+      "valid": [
+        {
+          "value": "0912345678",
+          "description": "Mobile number (Viettel, Vinaphone, MobiFone)"
+        },
+        {
+          "value": "0912345678",
+          "description": "10 digit mobile"
+        }
+      ],
+      "invalid": [
+        {
+          "value": "912345678",
+          "description": "Missing leading 0"
+        },
+        {
+          "value": "09123456789",
+          "description": "Too long (11 digits)"
+        }
+      ]
+    },
+    "email_address": {
+      "description": "Email address validation cases",
+      "valid": [
+        {
+          "value": "user@example.com",
+          "description": "Standard email"
+        },
+        {
+          "value": "user.name+tag@example.co.uk",
+          "description": "Email with dots and plus sign"
+        }
+      ],
+      "invalid": [
+        {
+          "value": "invalid.email@",
+          "description": "Missing domain"
+        },
+        {
+          "value": "@example.com",
+          "description": "Missing local part"
+        }
+      ]
+    },
+    "person_name": {
+      "description": "Vietnamese person name validation cases",
+      "valid": [
+        {
+          "value": "NGUYỄN VĂN AN",
+          "description": "Typical Vietnamese name"
+        },
+        {
+          "value": "HỒ CHÍ MINH",
+          "description": "Famous Vietnamese name"
+        },
+        {
+          "value": "TRẦN THỊ B",
+          "description": "Name with single character last name"
+        }
+      ],
+      "invalid": [
+        {
+          "value": "123456",
+          "description": "Numbers only"
+        },
+        {
+          "value": "A",
+          "description": "Single character"
+        }
+      ]
+    },
+    "bank_account_number": {
+      "description": "Bank account number validation cases",
+      "valid": [
+        {
+          "value": "0123456789",
+          "description": "10-digit account"
+        },
+        {
+          "value": "1234567890123",
+          "description": "13-digit account"
+        }
+      ],
+      "invalid": [
+        {
+          "value": "012345678",
+          "description": "Too short (9 digits)"
+        },
+        {
+          "value": "ABC3456789",
+          "description": "Contains letters"
+        }
+      ]
+    },
+    "issue_place": {
+      "description": "ID issue place (province) validation cases",
+      "valid": [
+        {
+          "value": "Hà Nội",
+          "description": "Capital city"
+        },
+        {
+          "value": "TP. Hồ Chí Minh",
+          "description": "Southern metropolis"
+        },
+        {
+          "value": "Đà Nẵng",
+          "description": "Central city"
+        }
+      ],
+      "invalid": [
+        {
+          "value": "Invalid Province",
+          "description": "Non-existent province"
+        },
+        {
+          "value": "123456",
+          "description": "Only numbers"
+        }
+      ]
+    },
+    "id_card_dates": {
+      "description": "ID card date range validation cases",
+      "valid": [
+        {
+          "issue_date": "2023-01-01",
+          "expiry_date": "2033-01-01",
+          "description": "10-year validity"
+        },
+        {
+          "issue_date": "2020-12-31",
+          "expiry_date": "2030-12-31",
+          "description": "Standard validity"
+        }
+      ],
+      "invalid": [
+        {
+          "issue_date": "2025-01-01",
+          "expiry_date": "2020-01-01",
+          "description": "Expiry before issue"
+        }
+      ]
+    }
+  },
+  "metadata": {
+    "domains_covered": [
+      "domain.value_objects.citizen_id",
+      "domain.value_objects.vietnamese_phone",
+      "domain.value_objects.email_address",
+      "domain.value_objects.person_name",
+      "domain.value_objects.bank_account_number",
+      "domain.value_objects.issue_place",
+      "domain.value_objects.id_card_dates"
+    ],
+    "maintained_by": ["backend", "frontend"],
+    "sync_frequency": "per sprint"
+  }
+}
