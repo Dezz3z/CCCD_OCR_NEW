@@ -1,0 +1,40 @@
+# Claude Code local settings
+.claude/settings.local.json
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+.mypy_cache/
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Node / Frontend
+node_modules/
+dist/
+build/
+.vite/
+
+# Rust / Tauri
+target/
+src-tauri/target/
+
+# Environment & secrets
+.env
+.env.*
+*.pem
+*.key
+
+# OS
+Thumbs.db
+.DS_Store
+
+# Logs
+*.log
+
+# IDE
+.vscode/
+.idea/
