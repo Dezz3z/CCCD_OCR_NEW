@@ -184,8 +184,8 @@ graph TB
 |---|---|---|---|---|
 | 1 | Sửa hướng EXIF | Áp `Orientation` 1–8 đã lưu ở S1 | `preproc.exif_transpose` | Ảnh scan không có EXIF → bỏ qua, không lỗi |
 | 2 | Giới hạn kích thước | Resize cạnh dài → 1600px. `INTER_AREA` khi thu nhỏ, `INTER_CUBIC` khi phóng | `preproc.target_long_edge` | 1600px là điểm cân bằng: dưới 1200 mất chi tiết, trên 2000 chậm gấp đôi không lợi |
-| 3 | Nắn phối cảnh | Contour → lọc theo diện tích + tỉ lệ ≈1.585 → `approxPolyDP` 4 đỉnh → `getPerspectiveTransform` → khung chuẩn 1012×638 | `preproc.perspective.*` | ⭐ Tìm nhầm contour (bàn, giấy nền) sẽ cắt sai. **Bảo vệ:** tỉ lệ ∈ [1.45, 1.72] và diện tích ≥ 25% ảnh; thất bại → `warp_succeeded=False`, giữ ảnh gốc |
-| 4 | Phát hiện lộn ngược 180° | 3 tín hiệu bỏ phiếu: `cls` model PaddleOCR · số vùng text đọc được ở 0° vs 180° · vị trí chân dung / MRZ | `preproc.orientation.strategy` | Ba tín hiệu ít khi cùng sai |
+| 3 | Nắn phối cảnh | Contour (dò trên bản thu nhỏ cạnh dài 800px) → lọc theo diện tích + tỉ lệ ≈1.585 → `approxPolyDP` 4 đỉnh → **đổi nhãn 4 đỉnh về khổ ngang** → `getPerspectiveTransform` → khung chuẩn 1012×638. ⭐ Không tìm được contour mà **tỉ lệ của chính khung ảnh** nằm trong dải cho phép → dùng luôn 4 góc ảnh (ảnh đã crop sát thẻ) | `preproc.perspective.*` | ⭐ Tìm nhầm contour (bàn, giấy nền) sẽ cắt sai. **Bảo vệ:** tỉ lệ ∈ [1.45, 1.72] và diện tích ≥ 25% ảnh; thất bại → `warp_succeeded=False`, chỉ khử nghiêng |
+| 4 | Phát hiện lộn ngược 180° | 3 tín hiệu bỏ phiếu: `cls` model PaddleOCR · số vùng text đọc được ở 0° vs 180° · **vị trí khối MRZ** (3 dòng full-width, cao bằng nhau, cách đều). ⭐ Chỉ xoay khi có **đúng một** khối như vậy sát mép — thẻ có khối ở cả hai mép (MRZ + khối địa chỉ) là **mơ hồ, không xoay** | `preproc.orientation.strategy` | ⭐ Xoay nhầm một thẻ vốn đã đúng tệ hơn nhiều so với bỏ sót một thẻ lộn ngược. Hai tín hiệu đầu cần engine OCR nên chỉ có từ tuần 3 |
 | 5 | Khử nghiêng | Hough Line trên cạnh ngang chủ đạo → góc trung vị → `warpAffine`. Giới hạn ±15° | `preproc.deskew.max_angle` | Xoay quá lớn làm mất góc → giới hạn góc |
 | 6 | Khử nhiễu | `bilateralFilter` (nhanh, giữ cạnh — **mặc định**) hoặc `fastNlMeansDenoisingColored` (chất lượng cao, chậm 5×) | `preproc.denoise.method` | Khử nhiễu quá tay làm mờ dấu tiếng Việt → tham số bảo thủ |
 | 7 | Cân bằng sáng | CLAHE trên kênh **L** của LAB (giữ màu) + gamma tự động theo độ sáng trung bình | `preproc.clahe.clip_limit` | `clip_limit` cao gây nhiễu hạt → mặc định 2.0 |
@@ -197,8 +197,8 @@ graph TB
 | Biến thể | Tạo bằng | Dùng cho | Vì sao |
 |---|---|---|---|
 | `v0` | Ảnh gốc đã re-encode | Dự phòng cuối | Không mất thông tin |
-| `v1` | + EXIF + resize | **Kênh QR** | ⭐ QR chịu nhiễu tốt nhưng **rất nhạy với khử nhiễu** — làm mượt có thể phá cấu trúc module |
-| `v2` | v1 + nắn phối cảnh | Cơ sở cho v3, v4 | |
+| `v1` | + EXIF + resize | **Kênh QR** | ⭐ QR chịu nhiễu tốt nhưng **rất nhạy với khử nhiễu** — làm mượt có thể phá cấu trúc module. Không sửa xoay ở đây: QR bất biến với hướng |
+| `v2` | v1 + nắn phối cảnh (thất bại → khử nghiêng) + sửa 180° | Cơ sở cho v3, v4 | ⭐ Sửa 180° đặt **sau** khi nắn: mọi tín hiệu về hướng chỉ có nghĩa trên thẻ đã dựng lại thành khổ ngang |
 | `v3` | v2 + khử nhiễu + CLAHE + tăng nét | **Kênh OCR văn bản** | Tối ưu cho chữ có dấu |
 | `v4` | v2 → xám → nhị phân adaptive | **Kênh MRZ** | MRZ là chữ đơn cách đen trắng — nhị phân hoá cho kết quả tốt hơn hẳn ảnh màu |
 

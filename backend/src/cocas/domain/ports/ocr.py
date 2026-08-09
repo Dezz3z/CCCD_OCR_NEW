@@ -177,6 +177,7 @@ class RawFieldValue:
 # ============================================================================
 
 
+@runtime_checkable
 class ImageData(Protocol):
     """An in-memory decoded image. Opaque to Domain — only its size matters here."""
 
@@ -187,6 +188,7 @@ class ImageData(Protocol):
     def height(self) -> int: ...
 
 
+@runtime_checkable
 class PreprocessedImageSet(Protocol):
     """The 5 lazily-built preprocessing variants of one source image (§12.4).
 

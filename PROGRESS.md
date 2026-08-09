@@ -11,7 +11,7 @@
 ```
 P0: Chuẩn bị        [====] ✅ DONE (2026-08-11)
 P1: Nền tảng        [====] ✅ DONE (2026-08-09)
-P2: OCR Module      [    ] ⏳ TODO (4 tuần) ⭐ Critical path
+P2: OCR Module      [=   ] 🔄 IN PROGRESS (tuần 1/4 xong) ⭐ Critical path
 P3: Nghiệp vụ       [    ] ⏳ TODO (3 tuần)
 P4: Giao diện       [    ] ⏳ TODO (3 tuần)
 P5: Desktop         [    ] ⏳ TODO (2 tuần)
@@ -145,16 +145,25 @@ P7: Nghiệm thu      [    ] ⏳ TODO (1 tuần)
 
 ---
 
-### ⏳ P2 — Module OCR (4 tuần) ⭐ CRITICAL PATH
-**Status:** TODO  
-**Est. Start:** 2026-08-26  
+### 🔄 P2 — Module OCR (4 tuần) ⭐ CRITICAL PATH
+**Status:** IN PROGRESS — tuần 1 xong 2026-08-09  
 **Est. Completion:** 2026-09-23
 
 **Deliverables:**
-- [ ] Tuần 1: Tiền xử lý ảnh (9 phép biến đổi, lazy)
+- [x] **Tuần 1: Tiền xử lý ảnh (9 phép biến đổi, tạo lười)** — `infrastructure/ocr/preprocessing/`
+  - `OpenCvPreprocessor` (Port 3 `IImagePreprocessor`) · `LazyPreprocessedImageSet` (v0–v4 lười, có cache) · `transforms.py` (9 phép) · `NumpyImageData`
+  - 79 test đơn vị xanh trên ảnh tổng hợp · `scripts/preview_preprocessing.py` để soi ảnh thật
+  - Đo trên 53 ảnh CCCD thật của người dùng: **46 ảnh xử lý được** (7 ảnh bị từ chối vì cạnh ngắn < 320 px — đúng thiết kế), **44/46 nắn phối cảnh thành công**, v2 dựng trong ~20 ms
 - [ ] Tuần 2: Kênh QR (≥90%) + Kênh MRZ (≥75% checksum)
 - [ ] Tuần 3: PaddleOCR adapter + Field Extractor
 - [ ] Tuần 4: Chuẩn hoá + Fusion + Validation
+
+**Phát hiện khi chạy trên ảnh thật (đã sửa, đã đồng bộ vào `07-module-ocr.md` §7.4.1):**
+1. ⭐ **Dò contour theo đặc tả gốc chỉ nắn được 4/46 ảnh.** Hai nguyên nhân, đều là trường hợp phổ biến chứ không phải ngoại lệ: (a) ảnh chụp bằng điện thoại cầm dọc → thẻ nằm ngang trong khung dọc, tỉ lệ quad ra 1/1.585 = 0.63 nên bị chốt tỉ lệ loại thẳng; (b) ảnh đã crop sát thẻ → không còn đường viền nào để dò. Sửa: đổi nhãn 4 đỉnh về khổ ngang, và lấy chính 4 góc ảnh làm quad khi tỉ lệ khung ảnh nằm trong dải cho phép. Sau khi sửa: **44/46**.
+2. **Dò contour trên ảnh 1600px tốn tới 1.9 giây/ảnh.** Chuyển sang dò trên bản thu nhỏ cạnh dài 800px rồi nhân ngược toạ độ quad → còn ~20 ms, kết quả không đổi.
+3. ⭐ **Phát hiện 180° bằng heuristic thuần OpenCV từng LẬT NGƯỢC một thẻ vốn đã đúng** — khối địa chỉ mặt sau cũng là 3 dòng full-width cách đều y hệt MRZ. Sửa: chỉ xoay khi có **đúng một** khối như vậy sát mép; hai khối ở hai mép → mơ hồ → không xoay. Hệ quả: 19/19 mặt sau có MRZ đều ra đúng chiều, **0 ca lật nhầm**.
+4. **Mặt trước chưa tự sửa được 180°** — không có MRZ nên không có tín hiệu nào đủ tin cậy trước khi có engine OCR. Hai tín hiệu còn lại trong §7.4.1 (model `cls` của PaddleOCR, đếm vùng text ở 0° vs 180°) đều cần engine → **hoàn tất ở tuần 3**, không phải bug bỏ quên.
+5. Sửa một lỗi gamma trong khâu cân bằng sáng: công thức dùng `1/gamma` làm **tối thêm** ảnh vốn đã tối. Lỗi này không lộ ra khi đọc code, chỉ lộ khi có test so sánh độ sáng trước/sau.
 
 **Milestones:**
 - M2: 2 ảnh CCCD thật → 6 trường đúng (chạy offline)

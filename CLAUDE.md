@@ -125,7 +125,7 @@ Vi phạm = phải sửa, không phải tranh luận.
 
 **Giai đoạn 1 (Thiết kế): ✅ HOÀN THÀNH** — tài liệu D2.0 đã đóng băng, 0 lỗi kiến trúc đã biết.
 
-**Giai đoạn 2 (Triển khai): P0 ✅ + P1 ✅ HOÀN THÀNH (2026-08-09). P2 (OCR) chưa bắt đầu.**
+**Giai đoạn 2 (Triển khai): P0 ✅ + P1 ✅ HOÀN THÀNH (2026-08-09). P2 (OCR) đang làm — tuần 1 (tiền xử lý ảnh) ✅ xong 2026-08-09.**
 Chi tiết đầy đủ từng module — xem [progress.md](progress.md) (cập nhật theo từng module, không rút gọn).
 
 ### Kiến trúc đã triển khai (P0 + P1)
@@ -135,7 +135,7 @@ Backend Python (`backend/src/cocas/`) đã có đủ 3/4 tầng theo Dependency 
 | Tầng | Trạng thái |
 |---|---|
 | `domain/` | ✅ Đầy đủ — 10 Value Object · 14 enum · 8 Entity · 5 Domain Service · 18 Port (+ fake/null cho mỗi Port) · cây ngoại lệ |
-| `infrastructure/` | Một phần — **persistence** (19 bảng, 8 migration, 7/8 repository + UnitOfWork; `Contract` repo **hoãn có chủ đích** vì phụ thuộc `RenderContextBuilder` chưa tồn tại tới P3) · **security** (DPAPI thật + AES-256-GCM + blind index) · **logging** (Loguru 3 sink + PII filter 2 lớp) · **system** (`SystemClock`, `Uuid7Generator`). Chưa có: OCR adapter, storage, documents, queue |
+| `infrastructure/` | Một phần — **persistence** (19 bảng, 8 migration, 7/8 repository + UnitOfWork; `Contract` repo **hoãn có chủ đích** vì phụ thuộc `RenderContextBuilder` chưa tồn tại tới P3) · **security** (DPAPI thật + AES-256-GCM + blind index) · **logging** (Loguru 3 sink + PII filter 2 lớp) · **system** (`SystemClock`, `Uuid7Generator`) · **ocr/preprocessing** (`OpenCvPreprocessor` + 5 biến thể tạo lười — P2 tuần 1). Chưa có: OCR engine adapter, kênh QR/MRZ, field extractor, storage, documents, queue |
 | `application/` | ⏳ Rỗng — chờ P3 |
 | `presentation/` | Một phần — middlewares (CORS, security headers, correlation-id, local token) · chưa có router/endpoint nào (64 endpoint là việc P3) |
 | `container.py` | ✅ Composition Root nối toàn bộ đồ thị phụ thuộc thật — ngoại lệ duy nhất được import-linter cho phép import cả 4 tầng |
@@ -157,7 +157,8 @@ Mọi mục dưới đây đã đồng bộ ngược vào `docs/design/`, không
 1. ⭐ **Vẫn thiếu Golden Set 200 cặp ảnh CCCD đã gán nhãn và 2 file `.docx` thật** — chặn kiểm chứng KPI P2 (MRZ ≥75%, False Confidence ≤0.5%). Xem "Việc cần người dùng cung cấp" trong `progress.md`.
 2. **PyInstaller + asyncpg**: `hiddenimports = ["asyncpg.pgproto"]` không đủ — asyncpg nạp submodule Cython biên dịch sẵn không thấy được qua static analysis. Dùng `collect_submodules("asyncpg")` (đã áp dụng trong `build.spec`).
 3. **`console=False` (bản production) sẽ crash lúc khởi động** — `loguru_config.configure_logging()`'s console sink gọi `logger.add(sys.stderr, ...)`, và `sys.stderr` là `None` dưới chế độ windowed của PyInstaller. Cố ý để lại cho P5/P6 (khi Supervisor đọc log qua file), **không phải bug đã sửa**.
-4. Kích thước gói `onedir` đo thật ở bản trial ~505 MB (tài liệu ước tính 180 MB cho bản cuối) — cần theo dõi khi thêm `resources/ocr-models` ở P5/P6, tránh vỡ ngân sách 1.5 GB (§14.5 sổ rủi ro).
+4. ⭐ **Tuần 3 phải hoàn tất khâu sửa xoay 180° cho mặt trước.** Tuần 1 chỉ xử lý được mặt sau (dựa vào vị trí khối MRZ); mặt trước không có tín hiệu nào đủ tin cậy nếu chưa có engine — dùng model `cls` của PaddleOCR khi cắm `PaddleOcrAdapter`. Xem `progress.md` mục P2 phát hiện #3, #4.
+5. Kích thước gói `onedir` đo thật ở bản trial ~505 MB (tài liệu ước tính 180 MB cho bản cuối) — cần theo dõi khi thêm `resources/ocr-models` ở P5/P6, tránh vỡ ngân sách 1.5 GB (§14.5 sổ rủi ro).
 
 ### Quy trình làm việc Giai đoạn 2
 
