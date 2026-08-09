@@ -23,7 +23,7 @@ Hệ thống Desktop tự động tạo hợp đồng từ ảnh CCCD, chạy ho
 | 01 | [Kiến trúc tổng thể](01-kien-truc-tong-the.md) | Nguyên tắc · Ràng buộc · NFR · Triển khai · Clean Architecture · DI · 15 ADR |
 | 02 | [Sơ đồ hệ thống](02-so-do-he-thong.md) | C4 Context/Container/Component · Sequence · State machine · DFD · Deployment |
 | 03 | [Luồng xử lý dữ liệu](03-luong-du-lieu.md) | Pipeline 13 chặng · Luồng thay thế · Idempotency · Vòng đời dữ liệu |
-| 04 | [Cơ sở dữ liệu](04-co-so-du-lieu.md) | **18 bảng** · ERD · Quan hệ · Chỉ mục · Mã hoá · Migration |
+| 04 | [Cơ sở dữ liệu](04-co-so-du-lieu.md) | **19 bảng** · ERD · Quan hệ · Chỉ mục · Mã hoá · Migration |
 | 05 | [Thiết kế API](05-thiet-ke-api.md) | **64 endpoint** · Quy ước · Mã lỗi · Request/Response |
 | 06 | [Thiết kế giao diện](06-giao-dien.md) | Design system · **8 wireframe** · Component · Phím tắt · Kiến trúc FE |
 | 07 | [Module OCR](07-module-ocr.md) | Pipeline 3 kênh QR/MRZ/OCR · Tiền xử lý · Fusion · Đo lường |
@@ -133,7 +133,7 @@ Mọi dòng code phải tuân thủ. Vi phạm = phải sửa, không phải tra
 
 | | Số lượng |
 |---|---|
-| Bảng CSDL | **18** |
+| Bảng CSDL | **19** |
 | Endpoint API | **64** |
 | Wireframe | **8** |
 | Quy tắc validation | **56** |

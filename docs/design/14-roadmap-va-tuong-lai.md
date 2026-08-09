@@ -33,7 +33,7 @@ gantt
 
     section P1 Nền tảng
     Domain · Value Object · 18 Port       :p1a, after p0, 4d
-    CSDL 18 bảng · Migration · Repository :p1b, after p0, 6d
+    CSDL 19 bảng · Migration · Repository :p1b, after p0, 6d
     DI · Logging · Crypto                 :p1c, after p1a, 3d
 
     section P2 OCR
@@ -89,7 +89,7 @@ gantt
 | Đầu ra | Tiêu chí hoàn thành |
 |---|---|
 | **Domain layer đầy đủ** | 10 Value Object · 8 Entity · 5 Domain Service · **18 Port** · cây ngoại lệ. ⭐ `domain/` **không import thư viện ngoài nào** — import-linter xác nhận |
-| **18 bảng CSDL** + 8 migration | `upgrade head` → `downgrade base` → `upgrade head` đều thành công trên DB rỗng |
+| **19 bảng CSDL** + 8 migration | `upgrade head` → `downgrade base` → `upgrade head` đều thành công trên DB rỗng |
 | **Dữ liệu seed** | document_type · 16 alias · 63 tỉnh · ~50 NH · ~30 cấu hình · **2 mẫu HĐ**. Idempotent |
 | **Repository + UnitOfWork** | Test tích hợp với `testcontainers[postgres]`. ⭐ Tách `IReadRepository`/`IWriteRepository` |
 | **Crypto Service** | Round-trip mã hoá/giải mã · AAD chống hoán vị ô · DPAPI bọc/mở bọc · blind index |
@@ -392,7 +392,7 @@ Bảng `document_type` đã chừa sẵn chỗ. Thêm một loại = thêm một
 |---|---|---|
 | 1 | ⭐ **Thu thập & gán nhãn Golden Set 200 cặp ảnh CCCD** | **Đường găng dài nhất.** Chỉ tiêu MRZ 75% và False Confidence 0.5% chỉ kiểm chứng được bằng ảnh thật. Nếu không có, cả P2 sẽ mù |
 | 2 | ⭐ **Cung cấp 2 file `.docx` thật** | Để quét tên biến chính xác thay vì suy từ danh sách trường. Cũng để xác nhận vị trí `{{r securities_account_no }}` đặt đúng chỗ cần in đậm |
-| 3 | ⭐ **Xác nhận tên file xuất cho mẫu `01A/GDKQ`** | Đang tạm để `Mẫu 01A-GDKQ - {full_name}` vì cả hai mẫu đều mang số hiệu 01A và sẽ trùng tên file nếu cùng một khách hàng ký cả hai |
+| 3 | ~~Xác nhận tên file xuất cho mẫu `01A/GDKQ`~~ ✅ | Xác nhận 2026-08-09: `01A_GDKQ - {full_name}` — khác `01A_HD_GDN`'s `Mẫu 01A - {full_name}` để không trùng nếu cùng khách hàng ký cả hai |
 
 ---
 

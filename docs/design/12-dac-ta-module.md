@@ -330,7 +330,7 @@
 | **Hậu điều kiện** | Định dạng ô: `version(1) ‖ nonce(12) ‖ ciphertext ‖ tag(16)` |
 | **Bất biến** | ⭐ Nonce ngẫu nhiên **mỗi lần** mã hoá — không bao giờ tái sử dụng |
 | **Bất biến** | ⭐ AAD = `entity_id ‖ table_name ‖ column_name` — chống tấn công hoán vị ô |
-| **Bất biến** | `blind_index` = `HMAC-SHA256(PEPPER, normalize(value))[0:16]` — tất định |
+| **Bất biến** | `blind_index` = `HMAC-SHA256(PEPPER, field_name ‖ normalize(value))[0:16]` — tất định. ⭐ Trộn `field_name` vào thông điệp (sửa 2026-08-09) để chống đụng độ chéo cột/chéo bảng khi hai trường khác nhau tình cờ cùng chuỗi giá trị đã chuẩn hoá — xem docs/design/04-co-so-du-lieu.md §4.8.4 |
 | **Ném ra** | `DecryptionError` (khi tag không khớp) · `KeyUnavailableError` |
 | **Không được làm** | ❌ Ghi khoá vào log · ❌ Trả khoá qua API · ❌ Lưu khoá ra đĩa dạng rõ |
 

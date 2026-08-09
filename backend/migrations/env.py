@@ -3,8 +3,8 @@ import asyncio
 from logging.config import fileConfig
 
 from alembic import context
-from sqlalchemy import engine_from_config, pool
-from sqlalchemy.ext.asyncio import AsyncEngine, create_async_engine
+from sqlalchemy import pool
+from sqlalchemy.ext.asyncio import create_async_engine
 
 # Import target metadata
 from cocas.infrastructure.persistence.models import Base

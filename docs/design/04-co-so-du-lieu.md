@@ -2,7 +2,9 @@
 
 [← Mục lục](README.md)
 
-**PostgreSQL 16 portable · 18 bảng · SQLAlchemy 2.0 async · Alembic**
+**PostgreSQL 16 portable · 19 bảng · SQLAlchemy 2.0 async · Alembic**
+
+> ⭐ **Sửa số liệu (2026-08-09):** con số "18 bảng" trong các tài liệu khác là đếm nhầm — §4.4 có 18 mục con được đánh số, nhưng mục **4.4.15 gộp chung hai bảng** (`province_code` **và** `bank_directory`) dưới một tiêu đề. Đếm theo sơ đồ ERD ở §4.2 và theo danh sách migration seed ở §4.9 (có migration `seed_province_code` **và** `seed_bank_directory` tách riêng) thì con số đúng là **19 bảng**. Mọi tài liệu khác đã được cập nhật theo con số này.
 
 ---
 
@@ -1048,7 +1050,7 @@ party_schema:
 contract_fields:        []                            ⭐ RỖNG → bỏ qua bước 3
 suppressed_variables:   ["contract_date","contract_date_text","day","month","year"]
 contract_no_pattern:    "01A-KQ-{yyyy}{MM}-{seq:05d}"
-export_name_pattern:    "Mẫu 01A-GDKQ - {full_name}"   ⚠️ CẦN XÁC NHẬN
+export_name_pattern:    "01A_GDKQ - {full_name}"   ✅ Xác nhận bởi người dùng 2026-08-09
 requires_images:        false
 → 3 bước wizard · 10 biến
 ```
@@ -1171,7 +1173,9 @@ version(1) ‖ nonce(12) ‖ ciphertext(n) ‖ tag(16)
 
 ### 4.8.4. Blind index
 
-`bidx = HMAC-SHA256(PEPPER, normalize(value))[0:16]`
+`bidx = HMAC-SHA256(PEPPER, field_name ‖ normalize(value))[0:16]`
+
+> ⭐ **Sửa công thức (2026-08-09):** bản gốc không trộn `field_name` vào thông điệp HMAC. Viết test cho thấy ngay lỗ hổng: một số điện thoại `"0912345678"` và một số tài khoản ngân hàng cùng chuỗi số `"0912345678"` sẽ cho **cùng một blind index** — kẻ tấn công có quyền đọc CSDL (nhưng không có PEPPER) có thể suy ra "SĐT của người này trùng số TK của người kia" mà không cần giải mã. Trộn `field_name` vào thông điệp loại bỏ hoàn toàn khả năng đụng độ chéo cột/chéo bảng, không đổi bất biến nào khác (vẫn tất định theo từng cặp `(field, value)`, vẫn không thể đảo ngược nếu thiếu PEPPER).
 
 | Trường | Chuẩn hoá trước khi hash |
 |---|---|
@@ -1228,7 +1232,7 @@ tag(16)
 
 | Chủ đề | Quy ước |
 |---|---|
-| Đặt tên revision | `{yyyyMMdd}_{seq}_{mô_tả_ngắn}` — `20260811_001_initial_schema` |
+| Đặt tên revision | `{yyyyMMdd}_{seq}_{mô_tả_ngắn}` — `20260811_001_initial_schema`. ⭐ **Giới hạn cứng: toàn bộ chuỗi ≤ 32 ký tự** — cột `alembic_version.version_num` do chính Alembic tạo là `VARCHAR(32)` và không có tham số công khai nào để nới (`version_table_impl()` hard-code `String(32)`; xác nhận bằng cách chạy thật trên PostgreSQL — 4/8 migration ban đầu vượt quá 32 ký tự và làm hỏng `upgrade head` giữa chừng). Giữ `mô_tả_ngắn` ≤ 18 ký tự |
 | Nguyên tắc | ⭐ **Mọi migration phải có `downgrade()` chạy được.** Không chấp nhận `pass` |
 | Chia nhỏ | Một migration = một thay đổi logic |
 | Dữ liệu seed | Migration **riêng biệt**, tiền tố `seed_`, phải **idempotent** |
@@ -1240,16 +1244,20 @@ tag(16)
 
 ### Danh sách migration ban đầu
 
+> ⭐ **Sửa thứ tự (2026-08-09):** bản gốc đặt `initial_schema` trước `extensions`. Nhưng `initial_schema` tạo chỉ mục GIN `ix_customer__name_trgm` dùng toán tử lớp `gin_trgm_ops` — toán tử này chỉ tồn tại **sau khi** bật extension `pg_trgm`. Chạy đúng thứ tự cũ sẽ vỡ ngay ở migration đầu tiên trên DB rỗng. Đã đảo `extensions` lên trước `initial_schema`.
+>
+> ⭐ **Sửa tên revision (2026-08-09):** chạy thật trên PostgreSQL phát hiện 4/8 tên revision gốc vượt quá 32 ký tự, làm `UPDATE alembic_version` lỗi `StringDataRightTruncationError` giữa `upgrade head`. Đã rút gọn phần mô tả xuống ≤ 18 ký tự cho toàn bộ 8 revision.
+
 | # | Revision | Nội dung |
 |---|---|---|
-| 1 | `20260811_001_initial_schema` | 18 bảng + chỉ mục + CHECK |
-| 2 | `20260811_002_extensions` | `pg_trgm`, `pgcrypto` |
-| 3 | `20260811_003_seed_document_type` | 1 bản ghi `CCCD_CHIP` + zone_map + anchor_patterns |
-| 4 | `20260811_004_seed_normalization_alias` | 16 alias cho `issue_place` |
-| 5 | `20260811_005_seed_province_code` | 63 tỉnh/thành |
-| 6 | `20260811_006_seed_bank_directory` | ~50 ngân hàng + độ dài STK |
-| 7 | `20260811_007_seed_system_setting` | ~30 khoá cấu hình mặc định |
-| 8 | `20260811_008_seed_contract_template` | 2 mẫu: `01A_HD_GDN`, `01A_GDKQ` |
+| 1 | `20260811_001_extensions` | `pg_trgm`, `pgcrypto` — phải chạy **trước** vì `initial_schema` cần `gin_trgm_ops` |
+| 2 | `20260811_002_initial_schema` | 19 bảng + chỉ mục + CHECK |
+| 3 | `20260811_003_seed_doctype` | 1 bản ghi `CCCD_CHIP` + zone_map + anchor_patterns |
+| 4 | `20260811_004_seed_alias` | 16 alias cho `issue_place` |
+| 5 | `20260811_005_seed_province` | 63 tỉnh/thành |
+| 6 | `20260811_006_seed_bank` | ~50 ngân hàng + độ dài STK |
+| 7 | `20260811_007_seed_setting` | ~30 khoá cấu hình mặc định |
+| 8 | `20260811_008_seed_template` | 2 mẫu: `01A_HD_GDN`, `01A_GDKQ` |
 
 ---
 

@@ -1,5 +1,15 @@
 """Application settings configuration."""
+import os
+from pathlib import Path
+
+from pydantic import Field
 from pydantic_settings import BaseSettings
+
+
+def _default_dpapi_key_path() -> str:
+    """`%LOCALAPPDATA%\\COCAS\\data\\keys\\master.key.dpapi` (§10.3.1, §4.8.1)."""
+    base = os.environ.get("LOCALAPPDATA", ".")
+    return str(Path(base) / "COCAS" / "data" / "keys" / "master.key.dpapi")
 
 
 class Settings(BaseSettings):
@@ -23,6 +33,7 @@ class Settings(BaseSettings):
 
     # Security
     local_token_secret: str = "dev-secret-change-in-production"
+    dpapi_key_path: str = Field(default_factory=_default_dpapi_key_path)
 
     class Config:
         env_file = ".env"

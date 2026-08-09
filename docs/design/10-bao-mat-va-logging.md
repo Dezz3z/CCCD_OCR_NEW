@@ -298,7 +298,7 @@ Biện pháp **bắt buộc, không có ngoại lệ**. Bộ lọc Loguru xử l
 | Loại dữ liệu | Mẫu nhận diện | Thay bằng | Ví dụ |
 |---|---|---|---|
 | Số CCCD | `\b\d{12}\b` | 8 chấm + 4 số cuối | `001199012345` → `••••••••2345` |
-| Số điện thoại | `\b0\d{9}\b` | 6 chấm + 3 số cuối | `0912345678` → `••••••678` |
+| Số điện thoại | `\b0\d{9}\b` | 7 chấm + 3 số cuối | `0912345678` → `•••••••678` |
 | Email | `\b[\w.%+-]+@[\w.-]+\.\w+\b` | Chữ đầu + tên miền che | `an@example.com` → `a***@e***.com` |
 | STK ngân hàng | `\b\d{9,20}\b` | 4 số cuối | `1234567890123` → `•••••••••0123` |
 | ⭐ STK chứng khoán | `\b\d{3}C\d{6}\b` | 3 số cuối | `008C123456` → `008C•••456` |

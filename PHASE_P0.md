@@ -185,4 +185,4 @@ cocas/
 
 ---
 
-**Bước tiếp theo:** P1 — Nền tảng (Domain layer, 18 bảng CSDL, Crypto, Logging) — 1.5 tuần
+**Bước tiếp theo:** P1 — Nền tảng (Domain layer, 19 bảng CSDL, Crypto, Logging) — 1.5 tuần

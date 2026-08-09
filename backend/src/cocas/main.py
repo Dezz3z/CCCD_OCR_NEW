@@ -1,10 +1,12 @@
 """COCAS FastAPI application entry point."""
+from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from cocas.config.settings import Settings
+from cocas.container import init_container
 from cocas.presentation.middlewares import (
     CorrelationIdMiddleware,
     LocalTokenMiddleware,
@@ -18,11 +20,12 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         settings = Settings()
 
     @asynccontextmanager
-    async def lifespan(app: FastAPI):
-        """Manage application lifecycle."""
-        # Startup
+    async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
+        """Manage application lifecycle — build the Composition Root once at startup."""
+        container = init_container(settings)
+        _app.state.container = container
         yield
-        # Shutdown
+        await container.close()
 
     app = FastAPI(
         title="COCAS API",

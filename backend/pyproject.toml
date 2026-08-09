@@ -11,9 +11,6 @@ license = { text = "UNLICENSED" }
 requires-python = ">=3.11"
 readme = "README.md"
 
-[project.urls]
-Repository = "https://github.com/vibecode/cocas"
-
 # ============================================================================
 # PRODUCTION DEPENDENCIES (39 libraries)
 # ============================================================================
@@ -85,13 +82,20 @@ dev = [
     "bandit>=1.8.0,<1.9.0",
     "pip-audit>=2.7.0,<2.8.0",
     "detect-secrets>=1.4.0,<1.5.0",
-    "gitleaks>=8.18.0,<8.19.0",
-    "radon>=6.1.0,<6.2.0",
+    # ⭐ NOT "gitleaks" — that name doesn't exist on PyPI (gitleaks ships as a Go
+    # binary via GitHub releases/Homebrew/scoop, never as a pip package). Listing
+    # it here made `pip install -e ".[dev]"` fail outright. CI's own "Gitleaks —
+    # Secret scan" step (ci.yml) provisions the real binary separately.
+    "radon>=6.0.0,<6.1.0",
+    "types-pywin32>=308,<309",  # stubs for DpapiKeyManager's win32crypt calls
 
     # Packaging
     "pyinstaller>=6.11.0,<6.12.0",
     "pre-commit>=3.7.0,<3.8.0",
 ]
+
+[project.urls]
+Repository = "https://github.com/vibecode/cocas"
 
 [tool.setuptools]
 packages = ["cocas"]
@@ -123,9 +127,20 @@ select = [
 ignore = [
     "E501",  # Line length (handled by formatter)
 ]
+# Typographic characters used deliberately throughout the Vietnamese docstrings
+# and design docs (ranges like "1–7", the ‖ concatenation operator in the crypto
+# spec). Without this, RUF001/RUF002 flags every one of them as a confusable.
+allowed-confusables = ["–", "—", "‖", "·", "≠", "≥", "≤"]
 
 [tool.ruff.lint.isort]
 known-first-party = ["cocas"]
+
+[tool.ruff.lint.per-file-ignores]
+# Test doubles must accept every parameter a Port's Protocol declares even
+# when a given fake doesn't need it (e.g. NullPdfConverter.convert() never
+# reads `timeout_sec`) — flagging that as an unused-argument bug would fight
+# the whole point of coding to an interface.
+"tests/**" = ["ARG001", "ARG002"]
 
 [tool.mypy]
 python_version = "3.11"
@@ -136,8 +151,16 @@ disallow_untyped_calls = true
 disallow_incomplete_defs = true
 
 [[tool.mypy.overrides]]
+# ⭐ P0 bug fixed 2026-08-09: per-module `strict = false` is a no-op in this
+# mypy version (`strict` is only honored in the global [tool.mypy] section —
+# confirmed empirically: type-arg errors kept firing under this override
+# until the actual model code was fixed to use `list[str]`/`dict[str, object]`
+# etc.). Listing the specific flags below is what actually relaxes checking
+# for third-party-heavy infrastructure code (pywin32, SQLAlchemy internals)
+# without silently no-op'ing the whole section.
 module = "cocas.infrastructure.*"
-strict = false
+disallow_untyped_calls = false
+warn_return_any = false
 
 # ============================================================================
 # PYTEST & COVERAGE
@@ -148,11 +171,20 @@ minversion = "8.3"
 testpaths = ["tests"]
 python_files = ["test_*.py", "*_test.py"]
 asyncio_mode = "auto"
+# ⭐ Bug fixed 2026-08-09: explicit "function" matches the test-loop scope
+# `asyncio_mode = "auto"` actually uses (pytest-asyncio 0.24 has no separate
+# "default test loop scope" ini key — only this one, for fixtures). Setting
+# it to "session" while tests themselves stayed function-scoped caused
+# `pg_engine` (tests/integration/persistence/conftest.py) to run its setup
+# on a different loop than the test body used it from, crashing asyncpg with
+# "Future attached to a different loop". Keeping fixtures and tests on the
+# same (function) scope is what actually fixes it.
+asyncio_default_fixture_loop_scope = "function"
 addopts = [
     "--strict-markers",
     "--tb=short",
     "--cov=src/cocas",
-    "--cov-report=term-with-missing",
+    "--cov-report=term-missing",
     "--cov-report=html",
     "--cov-fail-under=0",  # Will set domain/application thresholds in CI
 ]
@@ -185,10 +217,11 @@ exclude_lines = [
 # IMPORT-LINTER: Enforce Dependency Rule
 # ============================================================================
 
-[tool.import-linter]
-default-strictness = "full"
+[tool.importlinter]
+root_package = "cocas"
+include_external_packages = true
 
-[[tool.import-linter.contracts]]
+[[tool.importlinter.contracts]]
 name = "Layered architecture"
 type = "layers"
 layers = [
@@ -199,7 +232,7 @@ layers = [
 ]
 independent-modules = ["cocas.config"]
 
-[[tool.import-linter.contracts]]
+[[tool.importlinter.contracts]]
 name = "Domain zero-dependency"
 type = "forbidden"
 source_modules = ["cocas.domain"]
@@ -213,7 +246,7 @@ forbidden_modules = [
     "loguru",
 ]
 
-[[tool.import-linter.contracts]]
+[[tool.importlinter.contracts]]
 name = "Application no infrastructure"
 type = "forbidden"
 source_modules = ["cocas.application"]
@@ -224,7 +257,7 @@ forbidden_modules = [
     "cv2",
 ]
 
-[[tool.import-linter.contracts]]
+[[tool.importlinter.contracts]]
 name = "Container exception"
 type = "forbidden"
 source_modules = [

@@ -13,6 +13,11 @@ jobs:
     strategy:
       matrix:
         python-version: ["3.11"]
+    env:
+      # ⭐ Windows defaults text-mode file reads to the system codepage (cp1252),
+      # which cannot decode the Vietnamese (UTF-8) source/config files —
+      # breaks import-linter's own config reader otherwise. See PHASE_P0.md.
+      PYTHONUTF8: "1"
     steps:
       - uses: actions/checkout@v4
 
@@ -72,7 +77,7 @@ jobs:
 
       - name: Gitleaks — Secret scan
         run: |
-          pip install gitleaks
+          choco install gitleaks -y --no-progress
           gitleaks detect --source . --verbose
         continue-on-error: true
 

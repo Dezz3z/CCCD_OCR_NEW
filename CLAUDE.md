@@ -70,7 +70,7 @@ Vi phạm = phải sửa, không phải tranh luận.
 
 | | Số lượng |
 |---|---|
-| Bảng CSDL | **18** |
+| Bảng CSDL | **19** |
 | Endpoint API | **64** |
 | Wireframe | **8** |
 | Quy tắc validation | **56** |
@@ -125,14 +125,39 @@ Vi phạm = phải sửa, không phải tranh luận.
 
 **Giai đoạn 1 (Thiết kế): ✅ HOÀN THÀNH** — tài liệu D2.0 đã đóng băng, 0 lỗi kiến trúc đã biết.
 
-**Giai đoạn 2 (Triển khai): CHƯA BẮT ĐẦU.**
-Bước tiếp theo: **P0 — khung dự án, CI, import-linter** (song song với việc thu thập Golden Set).
+**Giai đoạn 2 (Triển khai): P0 ✅ + P1 ✅ HOÀN THÀNH (2026-08-09). P2 (OCR) chưa bắt đầu.**
+Chi tiết đầy đủ từng module — xem [progress.md](progress.md) (cập nhật theo từng module, không rút gọn).
 
-### Ba việc cần người dùng cung cấp
+### Kiến trúc đã triển khai (P0 + P1)
 
-1. ⭐ **Golden Set 200 cặp ảnh CCCD đã gán nhãn** — đường găng dài nhất, quyết định cả P2.
-2. ⭐ **2 file `.docx` thật** — để quét tên biến chính xác.
-3. ⭐ **Xác nhận tên file xuất cho `01A/GDKQ`** — hiện tạm để `Mẫu 01A-GDKQ - {full_name}` vì trùng số hiệu 01A.
+Backend Python (`backend/src/cocas/`) đã có đủ 3/4 tầng theo Dependency Rule, `application/` mới có khung thư mục rỗng (Use Case thật là việc của P3):
+
+| Tầng | Trạng thái |
+|---|---|
+| `domain/` | ✅ Đầy đủ — 10 Value Object · 14 enum · 8 Entity · 5 Domain Service · 18 Port (+ fake/null cho mỗi Port) · cây ngoại lệ |
+| `infrastructure/` | Một phần — **persistence** (19 bảng, 8 migration, 7/8 repository + UnitOfWork; `Contract` repo **hoãn có chủ đích** vì phụ thuộc `RenderContextBuilder` chưa tồn tại tới P3) · **security** (DPAPI thật + AES-256-GCM + blind index) · **logging** (Loguru 3 sink + PII filter 2 lớp) · **system** (`SystemClock`, `Uuid7Generator`). Chưa có: OCR adapter, storage, documents, queue |
+| `application/` | ⏳ Rỗng — chờ P3 |
+| `presentation/` | Một phần — middlewares (CORS, security headers, correlation-id, local token) · chưa có router/endpoint nào (64 endpoint là việc P3) |
+| `container.py` | ✅ Composition Root nối toàn bộ đồ thị phụ thuộc thật — ngoại lệ duy nhất được import-linter cho phép import cả 4 tầng |
+
+⭐ Mốc demo M1 (roadmap §14.3) đã đạt: [`backend/scripts/demo_m1_customer.py`](backend/scripts/demo_m1_customer.py) tạo Customer giả qua Container thật, đọc lại giải mã đúng, xác nhận `id_number_enc` là nhị phân không đọc được — chạy thật trên PostgreSQL. Đã có bản build `.exe` trial đầu tiên ([`backend/build.spec`](backend/build.spec)) — khởi động và trả request thật; chưa đóng gói model OCR thật (chưa có adapter).
+
+### Quyết định quan trọng đã chốt khi triển khai (khác/rõ hơn bản D2.0 gốc)
+
+Mọi mục dưới đây đã đồng bộ ngược vào `docs/design/`, không chỉ nằm trong code:
+
+- **19 bảng CSDL, không phải 18** — `04-co-so-du-lieu.md` §4.4.15 từng gộp 2 bảng dưới 1 tiêu đề. Đã sửa doc + mọi chỗ trích dẫn con số này (kể cả bảng "Quy mô hệ thống" ở trên).
+- **Blind index phải trộn tên trường**: `HMAC-SHA256(PEPPER, field_name ‖ normalize(value))`, không phải `HMAC-SHA256(PEPPER, normalize(value))` như đặc tả gốc — công thức cũ khiến SĐT và số TK ngân hàng cùng chuỗi số ra cùng blind index (đụng độ chéo cột). Sửa cả `04-co-so-du-lieu.md`, `12-dac-ta-module.md` và `blind_index.py`.
+- **`Container` không có "chế độ dev dùng `NullCryptoService`"** — luôn dùng `DpapiCryptoService` thật, nhất quán với P-11 (Windows là lớp xác thực duy nhất, không có triển khai thay thế). `NullCryptoService`/`FrozenClock`/`SequentialIdGenerator` chỉ tồn tại trong `tests/fixtures/fake_ports.py`.
+- **Loguru cần 2 lớp phòng thủ PII, không phải 1**: sửa `record["message"]`/`record["extra"]` qua `patcher` là chưa đủ — còn phải (1) tắt `diagnose=True` mặc định (rò biến cục bộ trong traceback) và (2) tự sửa `exception.args` tại chỗ (dòng tóm tắt `str(exc)` không đi qua `record["message"]`). Cả hai đều **không lộ ra khi đọc code**, chỉ lộ khi chạy test hồi quy `grep` thật trên file log.
+- **`gitleaks`/`radon` từng bị ghim sai trong `pyproject.toml`** (`gitleaks` không tồn tại trên PyPI; dải `radon>=6.1.0` chưa từng phát hành) — khiến `pip install -e ".[dev]"` fail ngay từ đầu kể từ khi 2 dòng này được thêm. Đã sửa; `ci.yml`'s bước Gitleaks đổi sang `choco install`.
+
+### Ràng buộc cần biết trước khi bắt đầu P2
+
+1. ⭐ **Vẫn thiếu Golden Set 200 cặp ảnh CCCD đã gán nhãn và 2 file `.docx` thật** — chặn kiểm chứng KPI P2 (MRZ ≥75%, False Confidence ≤0.5%). Xem "Việc cần người dùng cung cấp" trong `progress.md`.
+2. **PyInstaller + asyncpg**: `hiddenimports = ["asyncpg.pgproto"]` không đủ — asyncpg nạp submodule Cython biên dịch sẵn không thấy được qua static analysis. Dùng `collect_submodules("asyncpg")` (đã áp dụng trong `build.spec`).
+3. **`console=False` (bản production) sẽ crash lúc khởi động** — `loguru_config.configure_logging()`'s console sink gọi `logger.add(sys.stderr, ...)`, và `sys.stderr` là `None` dưới chế độ windowed của PyInstaller. Cố ý để lại cho P5/P6 (khi Supervisor đọc log qua file), **không phải bug đã sửa**.
+4. Kích thước gói `onedir` đo thật ở bản trial ~505 MB (tài liệu ước tính 180 MB cho bản cuối) — cần theo dõi khi thêm `resources/ocr-models` ở P5/P6, tránh vỡ ngân sách 1.5 GB (§14.5 sổ rủi ro).
 
 ### Quy trình làm việc Giai đoạn 2
 
