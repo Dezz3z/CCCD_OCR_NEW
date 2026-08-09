@@ -279,7 +279,7 @@ Ngoại lệ duy nhất: `cocas.container`
 | `paddleocr` | `2.9.*` | OCR | ⭐ **Ghim chặt** — API đổi thường xuyên giữa các bản |
 | `opencv-python-headless` | `4.10.*` | Xử lý ảnh | ⭐ Bản `headless` — không kéo GUI Qt (~200 MB) |
 | `pillow` | `11.0.*` | Đọc/ghi/re-encode ảnh | Kiểm định và làm sạch ảnh nạp vào |
-| `pyzbar` | `0.1.9` | Giải mã QR (dự phòng) | ⚠️ Cần DLL `libzbar` — phải đóng gói kèm |
+| `zxing-cpp` | `3.1.*` | ⭐ Giải mã QR (kênh hạng A) | Wheel tự chứa — **không cần model, không cần DLL hệ thống**. Thay `pyzbar` từ 2026-08-09, lý do đo thật ở [`07-module-ocr.md §7.4.3`](07-module-ocr.md#743-zxingqrdecoder) |
 | `numpy` | `>=1.26,<2.0` | Mảng số | ⭐ **Ghim `<2.0`** — PaddleOCR chưa tương thích NumPy 2 |
 
 ### Xử lý văn bản (2)
@@ -349,7 +349,7 @@ Ngoại lệ duy nhất: `cocas.container`
 | # | Vấn đề | Cách xử lý |
 |---|---|---|
 | 1 | ⭐ **PaddleOCR tải model từ mạng lần đầu** | **Vi phạm P-01.** Bắt buộc chỉ định tường minh `det_model_dir`, `rec_model_dir`, `cls_model_dir` trỏ vào `resources/ocr-models/`. **Test bắt buộc: chạy trên máy đã ngắt mạng** |
-| 2 | **PyInstaller không tự phát hiện dữ liệu của PaddleOCR/OpenCV** | Khai báo tường minh trong `build.spec`: `datas` cho model + dữ liệu `paddleocr`, `binaries` cho DLL của `pyzbar` và `libmagic`, `hiddenimports` cho module nạp động |
+| 2 | **PyInstaller không tự phát hiện dữ liệu của PaddleOCR/OpenCV** | Khai báo tường minh trong `build.spec`: `datas` cho model + dữ liệu `paddleocr`, `binaries` cho DLL `libmagic`, `hiddenimports` cho module nạp động |
 | 3 | ⭐ **NumPy 2.0 phá vỡ PaddleOCR** | Ghim `numpy>=1.26,<2.0`. ⭐ Có **test kiểm tra phiên bản lúc khởi động** |
 | 4 | **Kích thước gói** | `paddlepaddle` CPU ~600 MB khi cài, sau khi PyInstaller lọc còn ~180 MB. ⭐ Dùng UPX **nhưng loại trừ DLL của OpenCV và Paddle** — nén chúng gây crash |
 

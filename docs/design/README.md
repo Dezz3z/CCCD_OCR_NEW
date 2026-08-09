@@ -103,7 +103,7 @@ Mọi dòng code phải tuân thủ. Vi phạm = phải sửa, không phải tra
 | Desktop | **Tauri** (Rust) + WebView2 |
 | Frontend | **React 18** + TypeScript 5 + MUI v5 + TanStack Query + Zustand |
 | Backend | **Python 3.11+** + FastAPI + Pydantic v2 + Uvicorn (1 worker) |
-| OCR | **PaddleOCR** PP-OCRv4 (CPU, offline) + OpenCV + pyzbar |
+| OCR | **PaddleOCR** PP-OCRv4 (CPU, offline) + OpenCV + zxing-cpp |
 | CSDL | **PostgreSQL 16** portable (127.0.0.1:55432) + SQLAlchemy 2.0 + Alembic |
 | Tài liệu | **docxtpl** (Jinja2 sandboxed) + **LibreOffice** headless CLI |
 | Logging | **Loguru** (JSON có cấu trúc, che PII bắt buộc) |

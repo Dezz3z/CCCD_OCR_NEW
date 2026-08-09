@@ -54,7 +54,7 @@ graph TB
     subgraph ADAPTERS["🟠 INFRASTRUCTURE — ADAPTERS (thay thế được)"]
         A1["OpenCvPreprocessor<br/>biến thể TẠO LƯỜI"]
         A2["HeuristicSideClassifier"]
-        A3["OpenCvQrDecoder<br/>+ PyzbarFallback · 3 lần thử"]
+        A3["ZxingQrDecoder<br/>3 lần thử"]
         A4["Td1MrzReader<br/>post-filter charset"]
         A5["<b>PaddleOcrAdapter</b>"]
         A5b["TesseractAdapter (dự phòng)"]
@@ -226,19 +226,46 @@ graph TB
 
 ---
 
-### 7.4.3. `OpenCvQrDecoder`
+### 7.4.3. `ZxingQrDecoder`
 
 **Chuỗi thử (3 lần, dừng ở lần đầu thành công):**
 
 | Lần | Ảnh | Kỹ thuật |
 |---|---|---|
-| 1 | `v1` toàn ảnh | `cv2.wechat_qrcode.WeChatQRCode` — mạnh nhất với QR mờ/nghiêng |
-| 2 | `v1` toàn ảnh | `pyzbar.decode` — thuật toán khác, bắt được ca WeChat trượt |
-| 3 | `v1` góc phải-trên phóng 2× | QR trên CCCD nằm ở góc này |
+| 1 | `v0` độ phân giải gốc | `zxingcpp.read_barcodes` (`try_rotate` · `try_downscale` · `try_invert`) |
+| 2 | `v1` phóng 2× | Cùng bộ giải mã — bù ca QR quá nhỏ sau khi thu về 1600px |
+| 3 | `v0` góc phải-trên, làm nét rồi phóng 3× | QR trên CCCD nằm ở góc này; unsharp bù ảnh chụp mềm nét |
 
 > ⭐ **Rút từ 5 xuống 3 lần.** Hai lần cuối trong thiết kế cũ (quét 4 góc phần tư) có lợi ích biên rất thấp nhưng tốn ~0.8 giây ở ca xấu. Nếu 3 lần đều trượt thì QR thực sự không đọc được, và kênh MRZ đã đủ bù.
 
-**Phân tích payload:** tách theo `|`, ánh xạ theo vị trí sang các trường: số CCCD, số CMND cũ, họ tên, ngày sinh, giới tính, địa chỉ thường trú, ngày cấp.
+> ⭐ **Bộ giải mã đã đổi sang `zxing-cpp` (2026-08-09) — đo thật trên 53 ảnh CCCD, không phải suy luận.** Hai bộ giải mã trong thiết kế gốc đều **không dùng được với danh sách thư viện đã ghim**:
+>
+> | Bộ giải mã | Đọc được | Tốc độ | Vì sao loại |
+> |---|---|---|---|
+> | `cv2.QRCodeDetector` | 1/53 | nhanh | Định vị được QR nhưng **không giải mã nổi** ở mọi tỉ lệ/nhị phân hoá — QR CCCD ~130 px cho ~57 module (≈2.3 px/module) |
+> | `pyzbar` | **không chạy** | — | `libzbar-64.dll` cần `MSVCR120.dll` (VC++ 2013 Redistributable). Không chỉ là lỗi máy dev: **máy khách không cài redist cũng sẽ hỏng y hệt** |
+> | `cv2.wechat_qrcode` | 21/53 | **4060 ms/ảnh** | Nằm trong `opencv-contrib`, không phải `opencv-python-headless` đã ghim. 2 ảnh/hồ sơ ⇒ ~8 giây chỉ riêng khâu QR |
+> | ⭐ `zxing-cpp` | **21/53** | **66 ms/ảnh** | Wheel tự chứa, không cần model, không cần DLL hệ thống ⇒ **không có rủi ro đóng gói** |
+>
+> `zxing-cpp` cho **đúng độ chính xác của WeChat, nhanh gấp 61 lần** (chỉ lệch 2/53 ảnh theo cả hai chiều). Chọn nó cũng gỡ luôn rủi ro VC++ redist khỏi khâu đóng gói NSIS.
+
+⚠️ **Chỉ tiêu ≥90% CHƯA được kiểm chứng.** Đo trên 53 ảnh mẫu dev: 21 ảnh đọc được. Mẫu số thật không chốt được vì bộ ảnh **chưa gán nhãn mặt trước/sau** — ước lượng nằm trong dải **54–81% số mặt trước**, dưới chỉ tiêu. Phải đo lại bằng Golden Set 200 cặp đã gán nhãn trước khi coi chỉ tiêu này là đạt.
+
+**Phân tích payload:** tách theo `|`, ánh xạ theo vị trí. ⭐ **Bố cục đã xác nhận trên 18 payload thật (2026-08-09)** — đúng như đặc tả gốc:
+
+| Vị trí | Nội dung | Độ dài quan sát được | Ánh xạ `FieldKey` |
+|---|---|---|---|
+| 0 | Số CCCD | 12 (luôn luôn) | `ID_NUMBER` |
+| 1 | Số CMND cũ | 9 | *(không có `FieldKey`)* |
+| 2 | Họ tên | 10–20 | `FULL_NAME` |
+| 3 | Ngày sinh `ddmmyyyy` | 8 (luôn luôn) | `DATE_OF_BIRTH` |
+| 4 | Giới tính | 2–3 (`Nam`/`Nữ`) | *(không có `FieldKey`)* |
+| 5 | Địa chỉ thường trú | 32–66 | *(không có `FieldKey`)* |
+| 6 | Ngày cấp `ddmmyyyy` | 8 (luôn luôn) | `ISSUE_DATE` |
+
+⭐ **Payload có thể có 11 phần thay vì 7** — 4 phần cuối rỗng (quan sát trên 5/18 mẫu). Bộ phân tích phải **chấp nhận phần thừa rỗng**, không được coi là bố cục lạ.
+
+⚠️ Giới tính và địa chỉ **không nằm trong 6 `FieldKey`** nên không vào `fields`; chúng vẫn còn trong `raw_payload` để quy tắc hợp nhất #6 (suy luận từ mã số) đối chiếu chéo.
 
 **Kiểm tra hợp lý bắt buộc** trước khi chấp nhận: phần tử đầu phải là 12 chữ số; các trường ngày phải parse được `ddmmyyyy`. Không khớp → `layout_recognized=False`.
 

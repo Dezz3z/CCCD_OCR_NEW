@@ -88,7 +88,7 @@ Vi phạm = phải sửa, không phải tranh luận.
 | Desktop | Tauri (Rust) + WebView2 |
 | Frontend | React 18 + TypeScript 5 + MUI v5 + TanStack Query + Zustand |
 | Backend | Python 3.11+ · FastAPI · Pydantic v2 · Uvicorn (**1 worker**) |
-| OCR | PaddleOCR PP-OCRv4 (CPU, offline) + OpenCV + pyzbar |
+| OCR | PaddleOCR PP-OCRv4 (CPU, offline) + OpenCV + zxing-cpp |
 | CSDL | PostgreSQL 16 portable `127.0.0.1:55432` · SQLAlchemy 2.0 async · Alembic |
 | Tài liệu | docxtpl (Jinja2 **sandboxed**) + LibreOffice headless CLI |
 | Logging | Loguru (JSON có cấu trúc, **che PII bắt buộc**) |
@@ -125,7 +125,7 @@ Vi phạm = phải sửa, không phải tranh luận.
 
 **Giai đoạn 1 (Thiết kế): ✅ HOÀN THÀNH** — tài liệu D2.0 đã đóng băng, 0 lỗi kiến trúc đã biết.
 
-**Giai đoạn 2 (Triển khai): P0 ✅ + P1 ✅ HOÀN THÀNH (2026-08-09). P2 (OCR) đang làm — tuần 1 (tiền xử lý ảnh) ✅ xong 2026-08-09.**
+**Giai đoạn 2 (Triển khai): P0 ✅ + P1 ✅ HOÀN THÀNH (2026-08-09). P2 (OCR) đang làm — tuần 1 (tiền xử lý ảnh) ✅ + tuần 2 (kênh QR/MRZ) ✅ xong 2026-08-09.**
 Chi tiết đầy đủ từng module — xem [progress.md](progress.md) (cập nhật theo từng module, không rút gọn).
 
 ### Kiến trúc đã triển khai (P0 + P1)
@@ -135,7 +135,7 @@ Backend Python (`backend/src/cocas/`) đã có đủ 3/4 tầng theo Dependency 
 | Tầng | Trạng thái |
 |---|---|
 | `domain/` | ✅ Đầy đủ — 10 Value Object · 14 enum · 8 Entity · 5 Domain Service · 18 Port (+ fake/null cho mỗi Port) · cây ngoại lệ |
-| `infrastructure/` | Một phần — **persistence** (19 bảng, 8 migration, 7/8 repository + UnitOfWork; `Contract` repo **hoãn có chủ đích** vì phụ thuộc `RenderContextBuilder` chưa tồn tại tới P3) · **security** (DPAPI thật + AES-256-GCM + blind index) · **logging** (Loguru 3 sink + PII filter 2 lớp) · **system** (`SystemClock`, `Uuid7Generator`) · **ocr/preprocessing** (`OpenCvPreprocessor` + 5 biến thể tạo lười — P2 tuần 1). Chưa có: OCR engine adapter, kênh QR/MRZ, field extractor, storage, documents, queue |
+| `infrastructure/` | Một phần — **persistence** (19 bảng, 8 migration, 7/8 repository + UnitOfWork; `Contract` repo **hoãn có chủ đích** vì phụ thuộc `RenderContextBuilder` chưa tồn tại tới P3) · **security** (DPAPI thật + AES-256-GCM + blind index) · **logging** (Loguru 3 sink + PII filter 2 lớp) · **system** (`SystemClock`, `Uuid7Generator`) · **ocr/preprocessing** (`OpenCvPreprocessor` + 5 biến thể tạo lười — P2 tuần 1) · **ocr/channels** (`ZxingQrDecoder` + `Td1MrzReader` + `td1.py` — P2 tuần 2). Chưa có: OCR engine adapter, side classifier, field extractor, storage, documents, queue |
 | `application/` | ⏳ Rỗng — chờ P3 |
 | `presentation/` | Một phần — middlewares (CORS, security headers, correlation-id, local token) · chưa có router/endpoint nào (64 endpoint là việc P3) |
 | `container.py` | ✅ Composition Root nối toàn bộ đồ thị phụ thuộc thật — ngoại lệ duy nhất được import-linter cho phép import cả 4 tầng |
@@ -151,10 +151,14 @@ Mọi mục dưới đây đã đồng bộ ngược vào `docs/design/`, không
 - **`Container` không có "chế độ dev dùng `NullCryptoService`"** — luôn dùng `DpapiCryptoService` thật, nhất quán với P-11 (Windows là lớp xác thực duy nhất, không có triển khai thay thế). `NullCryptoService`/`FrozenClock`/`SequentialIdGenerator` chỉ tồn tại trong `tests/fixtures/fake_ports.py`.
 - **Loguru cần 2 lớp phòng thủ PII, không phải 1**: sửa `record["message"]`/`record["extra"]` qua `patcher` là chưa đủ — còn phải (1) tắt `diagnose=True` mặc định (rò biến cục bộ trong traceback) và (2) tự sửa `exception.args` tại chỗ (dòng tóm tắt `str(exc)` không đi qua `record["message"]`). Cả hai đều **không lộ ra khi đọc code**, chỉ lộ khi chạy test hồi quy `grep` thật trên file log.
 - **`gitleaks`/`radon` từng bị ghim sai trong `pyproject.toml`** (`gitleaks` không tồn tại trên PyPI; dải `radon>=6.1.0` chưa từng phát hành) — khiến `pip install -e ".[dev]"` fail ngay từ đầu kể từ khi 2 dòng này được thêm. Đã sửa; `ci.yml`'s bước Gitleaks đổi sang `choco install`.
+- ⭐ **Bộ giải mã QR là `zxing-cpp`, không phải WeChat/pyzbar** (đổi 2026-08-09 sau khi đo thật 53 ảnh). `cv2.QRCodeDetector` chỉ đọc 1/53; `pyzbar` không chạy nổi vì `libzbar-64.dll` cần VC++ 2013 Redistributable (**máy khách cũng sẽ hỏng y hệt**); `cv2.wechat_qrcode` cần `opencv-contrib` và tốn 4060 ms/ảnh. `zxing-cpp` cùng độ chính xác WeChat, 66 ms/ảnh, wheel tự chứa. Đã đồng bộ vào `07`, `03`, `01`, `11`, `13`, `pyproject.toml`, `build.spec`.
+- ⭐ **Số CCCD trong MRZ nằm ở vùng dữ liệu tuỳ chọn (dòng 1, vị trí 15–26), KHÔNG ở trường số tài liệu** (vị trí 5–13 là **CMND cũ 9 số**). Lấy nhầm sẽ khiến quy tắc hợp nhất #5 `CARD_MISMATCH` báo động giả với mọi thẻ.
+- ⭐ **Ánh xạ cưỡng bức bộ ký tự MRZ phải áp theo vị trí, không toàn cục** — A–Z là ký tự hợp lệ trong TD1, nên áp `O→0 · D→0 · S→5 · B→8` toàn cục sẽ phá mọi họ tên Việt (`DO`→`00`, `HOANG`→`H0ANG`). Chỉ ép chữ→số trong các dải TD1 định nghĩa là số; dòng 3 (họ tên) không bao giờ bị ép.
 
 ### Ràng buộc cần biết trước khi bắt đầu P2
 
-1. ⭐ **Vẫn thiếu Golden Set 200 cặp ảnh CCCD đã gán nhãn và 2 file `.docx` thật** — chặn kiểm chứng KPI P2 (MRZ ≥75%, False Confidence ≤0.5%). Xem "Việc cần người dùng cung cấp" trong `progress.md`.
+1. ⭐ **Vẫn thiếu Golden Set 200 cặp ảnh CCCD đã gán nhãn và 2 file `.docx` thật** — chặn kiểm chứng KPI P2 (QR ≥90%, MRZ ≥75%, False Confidence ≤0.5%). 53 ảnh mẫu hiện có **không gán nhãn trước/sau**, nên không tính được mẫu số cho tỉ lệ đọc QR: đo được 18/53 ảnh, tương đương một dải rộng 54–81% mặt trước. Xem "Việc cần người dùng cung cấp" trong `progress.md`.
+   - **MRZ chưa đo được lần nào** — `Td1MrzReader` phụ thuộc `IRegionRecognizer`, chỉ có hiện thực thật từ tuần 3. Logic TD1 đã test kỹ bằng khối MRZ thật; phần chưa biết là engine đọc dải MRZ ra chuỗi tốt tới đâu. Dùng `backend/scripts/verify_qr_mrz.py` để đo ngay khi cắm adapter.
 2. **PyInstaller + asyncpg**: `hiddenimports = ["asyncpg.pgproto"]` không đủ — asyncpg nạp submodule Cython biên dịch sẵn không thấy được qua static analysis. Dùng `collect_submodules("asyncpg")` (đã áp dụng trong `build.spec`).
 3. **`console=False` (bản production) sẽ crash lúc khởi động** — `loguru_config.configure_logging()`'s console sink gọi `logger.add(sys.stderr, ...)`, và `sys.stderr` là `None` dưới chế độ windowed của PyInstaller. Cố ý để lại cho P5/P6 (khi Supervisor đọc log qua file), **không phải bug đã sửa**.
 4. ⭐ **Tuần 3 phải hoàn tất khâu sửa xoay 180° cho mặt trước.** Tuần 1 chỉ xử lý được mặt sau (dựa vào vị trí khối MRZ); mặt trước không có tín hiệu nào đủ tin cậy nếu chưa có engine — dùng model `cls` của PaddleOCR khi cắm `PaddleOcrAdapter`. Xem `progress.md` mục P2 phát hiện #3, #4.

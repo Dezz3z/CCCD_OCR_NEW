@@ -31,14 +31,7 @@ datas += [
 # ⭐ §11.8 lưu ý #2 — DLL ngoài không được tự thu thập vì được nạp qua ctypes,
 # không qua `import`.
 binaries = []
-import pyzbar as _pyzbar  # noqa: E402
 import os as _os  # noqa: E402
-
-_pyzbar_dir = _os.path.dirname(_pyzbar.__file__)
-for _dll in ("libzbar-64.dll", "libiconv.dll"):
-    _path = _os.path.join(_pyzbar_dir, _dll)
-    if _os.path.exists(_path):
-        binaries.append((_path, "pyzbar"))
 
 import magic as _magic  # noqa: E402
 

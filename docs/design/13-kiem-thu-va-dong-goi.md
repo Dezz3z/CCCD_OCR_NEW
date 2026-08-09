@@ -240,7 +240,7 @@ ContractSystem-Setup-1.0.0.exe   (NSIS · ~1.1 GB · đã ký số)
 | Mục | Nội dung | Vì sao |
 |---|---|---|
 | `datas` | ⭐ Thư mục model PaddleOCR · dữ liệu của gói `paddleocr` · migration Alembic | PyInstaller **không tự phát hiện** dữ liệu nạp động |
-| `binaries` | `libzbar.dll` (pyzbar) · `libmagic.dll` (python-magic) | DLL ngoài không được tự thu thập |
+| `binaries` | `libmagic.dll` (python-magic) | DLL ngoài không được tự thu thập. ⭐ Không còn `libzbar.dll`: `pyzbar` đã bị thay bằng `zxing-cpp` — DLL đó cần `MSVCR120.dll` (VC++ 2013 Redistributable) nên **sẽ hỏng trên máy khách chưa cài redist** |
 | `hiddenimports` | `paddle.*` (nạp động) · `asyncpg.pgproto` · `uvicorn.protocols.*` · `alembic.ddl.postgresql` | Module import bằng chuỗi |
 | `excludes` | `tkinter` · `matplotlib` · `PyQt5` · `IPython` · `pytest` · `notebook` | Giảm ~120 MB |
 | `console` | `False` | ⭐ Không hiện cửa sổ đen — yêu cầu "không cần mở Terminal" |

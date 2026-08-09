@@ -33,7 +33,9 @@ dependencies = [
     "paddleocr>=2.9.0,<2.10.0",
     "opencv-python-headless>=4.10.0,<4.11.0",
     "pillow>=11.0.0,<12.0.0",
-    "pyzbar>=0.1.9,<0.2.0",
+    # ⭐ Replaced pyzbar 2026-08-09: libzbar-64.dll needs MSVCR120.dll (VC++ 2013
+    # redist), which would break on customer machines too — see §7.4.3.
+    "zxing-cpp>=3.1.0,<3.2.0",
     "numpy>=1.26.0,<2.0.0",  # ⭐ CRITICAL: PaddleOCR incompatible with NumPy 2.0
 
     # Text processing (2)

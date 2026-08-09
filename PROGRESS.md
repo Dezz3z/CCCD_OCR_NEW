@@ -146,7 +146,7 @@ P7: Nghiệm thu      [    ] ⏳ TODO (1 tuần)
 ---
 
 ### 🔄 P2 — Module OCR (4 tuần) ⭐ CRITICAL PATH
-**Status:** IN PROGRESS — tuần 1 xong 2026-08-09  
+**Status:** IN PROGRESS — tuần 1 + tuần 2 xong 2026-08-09  
 **Est. Completion:** 2026-09-23
 
 **Deliverables:**
@@ -154,7 +154,12 @@ P7: Nghiệm thu      [    ] ⏳ TODO (1 tuần)
   - `OpenCvPreprocessor` (Port 3 `IImagePreprocessor`) · `LazyPreprocessedImageSet` (v0–v4 lười, có cache) · `transforms.py` (9 phép) · `NumpyImageData`
   - 79 test đơn vị xanh trên ảnh tổng hợp · `scripts/preview_preprocessing.py` để soi ảnh thật
   - Đo trên 53 ảnh CCCD thật của người dùng: **46 ảnh xử lý được** (7 ảnh bị từ chối vì cạnh ngắn < 320 px — đúng thiết kế), **44/46 nắn phối cảnh thành công**, v2 dựng trong ~20 ms
-- [ ] Tuần 2: Kênh QR (≥90%) + Kênh MRZ (≥75% checksum)
+- [x] **Tuần 2: Kênh QR + Kênh MRZ** — `infrastructure/ocr/channels/`
+  - `ZxingQrDecoder` (Port 5 `IQrDecoder`) — chuỗi 3 lần thử, không bao giờ ném ngoại lệ
+  - `Td1MrzReader` (Port 6 `IMrzReader`) + `td1.py` (logic chuỗi TD1 thuần, không ảnh/không I/O)
+  - 69 test đơn vị mới (33 TD1 · 19 QR · 17 MRZ) — **733 test toàn dự án xanh**, `ruff` sạch, `import-linter` 4/4 hợp đồng
+  - `scripts/verify_qr_mrz.py` — công cụ đo tỉ lệ đọc, dùng lại khi có Golden Set
+  - ⚠️ **Chỉ tiêu chưa chốt được:** QR đo 18/53 ảnh (~54–81% mặt trước, dải rộng vì ảnh **chưa gán nhãn** trước/sau) — dưới mốc ≥90%. MRZ **chưa đo được**: cần `IRegionRecognizer`, tới tuần 3 mới có
 - [ ] Tuần 3: PaddleOCR adapter + Field Extractor
 - [ ] Tuần 4: Chuẩn hoá + Fusion + Validation
 
@@ -164,6 +169,29 @@ P7: Nghiệm thu      [    ] ⏳ TODO (1 tuần)
 3. ⭐ **Phát hiện 180° bằng heuristic thuần OpenCV từng LẬT NGƯỢC một thẻ vốn đã đúng** — khối địa chỉ mặt sau cũng là 3 dòng full-width cách đều y hệt MRZ. Sửa: chỉ xoay khi có **đúng một** khối như vậy sát mép; hai khối ở hai mép → mơ hồ → không xoay. Hệ quả: 19/19 mặt sau có MRZ đều ra đúng chiều, **0 ca lật nhầm**.
 4. **Mặt trước chưa tự sửa được 180°** — không có MRZ nên không có tín hiệu nào đủ tin cậy trước khi có engine OCR. Hai tín hiệu còn lại trong §7.4.1 (model `cls` của PaddleOCR, đếm vùng text ở 0° vs 180°) đều cần engine → **hoàn tất ở tuần 3**, không phải bug bỏ quên.
 5. Sửa một lỗi gamma trong khâu cân bằng sáng: công thức dùng `1/gamma` làm **tối thêm** ảnh vốn đã tối. Lỗi này không lộ ra khi đọc code, chỉ lộ khi có test so sánh độ sáng trước/sau.
+
+**Phát hiện tuần 2 (đã đồng bộ vào `07-module-ocr.md` §7.4.3, `03`, `01`, `11`, `13`):**
+
+6. ⭐ **Cả hai bộ giải mã QR mà thiết kế D2.0 chỉ định đều KHÔNG dùng được với danh sách thư viện đã ghim.** Chỉ lộ ra khi chạy thật trên 53 ảnh, không thể suy ra từ đọc tài liệu:
+
+   | Bộ giải mã | Đọc được | Tốc độ | Vấn đề |
+   |---|---|---|---|
+   | `cv2.QRCodeDetector` (có sẵn trong bản đã ghim) | 1/53 | nhanh | **Định vị được QR nhưng không giải mã nổi** ở mọi tỉ lệ (1×–8×) và mọi cách nhị phân hoá. QR CCCD ~130 px cho ~57 module ≈ 2.3 px/module — dưới ngưỡng của bộ giải mã này |
+   | `pyzbar` (đã ghim trong `pyproject.toml`) | **không chạy nổi** | — | `libzbar-64.dll` cần `MSVCR120.dll` (VC++ 2013 Redistributable). ⭐ **Không phải lỗi máy dev**: máy khách chưa cài redist sẽ hỏng y hệt sau khi đóng gói NSIS |
+   | `cv2.wechat_qrcode` (§7.4.3 chỉ định làm lần thử 1) | 21/53 | **4060 ms/ảnh** | Nằm trong `opencv-contrib`, không phải `opencv-python-headless` đã ghim. 2 ảnh/hồ sơ ⇒ ~8 giây chỉ riêng khâu QR |
+   | ⭐ **`zxing-cpp`** (đã chọn) | **21/53** | **66 ms/ảnh** | Wheel tự chứa — không model, không DLL hệ thống ⇒ **gỡ hẳn rủi ro VC++ redist khỏi khâu đóng gói** |
+
+   `zxing-cpp` cho **đúng độ chính xác của WeChat, nhanh gấp 61 lần** (chỉ lệch 2/53 ảnh, theo cả hai chiều). Người dùng chốt phương án 2026-08-09. Đã bỏ `pyzbar` khỏi `pyproject.toml` và gỡ khối copy `libzbar-64.dll`/`libiconv.dll` khỏi `build.spec`.
+
+7. ⭐ **Bố cục QR và MRZ đã được xác nhận trên dữ liệu thật, không còn là giả định.** 18 payload QR cho thấy đúng 7 phần như đặc tả (`{12 số}|{CMND 9 số}|{họ tên}|{ddmmyyyy}|{giới tính}|{địa chỉ}|{ddmmyyyy}`), nhưng **5/18 mẫu có 11 phần** — 4 phần cuối rỗng. Bộ phân tích phải chấp nhận phần thừa rỗng, nếu không sẽ loại nhầm 28% payload hợp lệ thành "bố cục lạ".
+
+8. ⭐ **MRZ của CCCD Việt Nam đặt số CCCD ở vùng dữ liệu tuỳ chọn, KHÔNG ở trường số tài liệu.** Đọc trực tiếp từ một thẻ thật: dòng 1 vị trí 5–13 chứa **CMND cũ 9 số**, còn **CCCD 12 số nằm ở vị trí 15–26**. Lấy nhầm trường sẽ ra số CMND cũ và làm quy tắc hợp nhất #5 (`CARD_MISMATCH`) báo động giả với mọi thẻ. Cả 5 check digit (kể cả check tổng 50 ký tự) đã tự tính tay và khớp.
+
+9. ⭐ **Bảng ánh xạ cưỡng bức bộ ký tự phải áp THEO VỊ TRÍ, không áp toàn cục.** Đặc tả §7.4.4 liệt kê `O,Q,D→0 · I,l→1 · S→5 · B→8` — nhưng A–Z đều là ký tự **hợp lệ** trong TD1. Áp toàn cục sẽ biến `DO`→`00`, `HOANG`→`H0ANG`, `SON`→`50N`, phá mọi họ tên Việt có D/O/S/B. Sửa: chỉ ép chữ→số trong các dải TD1 định nghĩa là số (vị trí 5–13, 15–28 dòng 1; 0–5, 8–13 dòng 2); dòng 3 (họ tên) không bao giờ bị ép. Đây đúng là ý nghĩa thực tế của "charset_hint chỉ là bộ lọc hậu xử lý" (CLAUDE.md điều dễ sai #3).
+
+10. **Nghi ngờ `warp_succeeded=True` trên gần như mọi ảnh — điều tra xong, KHÔNG phải lỗi.** Ảnh mẫu hầu hết đã cắt sát thẻ, tỉ lệ 1.56–1.61 nằm đúng trong dải `[1.45, 1.72]`, nên `full_frame_quad` chấp nhận là đúng thiết kế. Hai ảnh bị từ chối có tỉ lệ 1.74 và 1.80 — từ chối cũng đúng.
+
+11. **Ngưỡng `MIN_SHORT_EDGE = 320` làm mất 3 ảnh mà `zxing-cpp` đọc được QR** (21 ảnh đọc được ở mức thô → 18 ảnh qua được pipeline). Đúng đặc tả (tiền điều kiện `IOcrEngine` là cạnh ngắn ≥ 320) nên **giữ nguyên**; ghi lại vì nó là một phần chênh lệch giữa "trần khả năng" và "tỉ lệ thực tế".
 
 **Milestones:**
 - M2: 2 ảnh CCCD thật → 6 trường đúng (chạy offline)
@@ -181,9 +209,11 @@ P7: Nghiệm thu      [    ] ⏳ TODO (1 tuần)
 - 🔴 PaddleOCR tải model từ mạng (vi phạm P-01)
   - 🎯 Tuần 3: chỉ định model_dir tường minh, test offline
 - 🔴 MRZ không đạt 75% (không có charset whitelist)
-  - 🎯 Tuần 2: kiểm chứng sớm, phương án B nếu cần
-- 🔴 Chưa có Golden Set 200 cặp ảnh
-  - 🎯 **Chuẩn bị NGAY từ P0** (song song, không đợi)
+  - 🎯 **Chưa kiểm chứng được ở tuần 2** — `Td1MrzReader` phụ thuộc `IRegionRecognizer`, mà port này chỉ có hiện thực thật từ tuần 3. Logic TD1 (checksum, ép bộ ký tự theo vị trí, sửa lỗi có giới hạn) đã xong và test kỹ bằng khối MRZ thật; **phần chưa biết là engine đọc dải MRZ ra chuỗi tốt tới đâu**. Đo bằng `scripts/verify_qr_mrz.py` ngay khi cắm adapter ở tuần 3
+- 🔴 QR chưa đạt ≥90% — đo được 18/53 ảnh (~54–81% mặt trước)
+  - 🎯 Người dùng chốt 2026-08-09: **viết code tiếp, chốt KPI khi có Golden Set**. Nếu Golden Set xác nhận vẫn hụt, cân nhắc thêm lần thử thứ 4 (dò khối QR rồi cắt sát) hoặc hạ chỉ tiêu cho khớp thực tế
+- 🔴 Chưa có Golden Set 200 cặp ảnh **đã gán nhãn trước/sau**
+  - 🎯 **Chặn việc chốt cả 2 KPI của P2.** 53 ảnh mẫu hiện có không gán nhãn nên không tính được mẫu số cho tỉ lệ đọc QR
 
 ---
 

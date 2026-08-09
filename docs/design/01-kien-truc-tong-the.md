@@ -228,7 +228,7 @@ Từ đây Tauri giám sát backend mỗi 5 giây. Backend chết → tự khở
 | C-06 | Ingestion Module | Infrastructure | Kiểm định file, magic bytes, re-encode, lưu Vault | python-magic, Pillow |
 | C-07 | Image Preprocessor | Infrastructure | 9 phép biến đổi, 5 biến thể **tạo lười** | OpenCV |
 | C-08 | Card Classifier | Infrastructure | Nhận diện mặt trước/sau | Heuristic đa tín hiệu |
-| C-09 | QR Decoder | Infrastructure | Giải mã QR (3 lần thử) | OpenCV WeChatQRCode / pyzbar |
+| C-09 | QR Decoder | Infrastructure | Giải mã QR (3 lần thử) | zxing-cpp |
 | C-10 | MRZ Reader | Infrastructure | Đọc + checksum MRZ TD1 | Region OCR + parser |
 | C-11 | OCR Engine Adapter | Infrastructure | Bọc PaddleOCR sau `IOcrEngine` | PaddleOCR PP-OCRv4 |
 | C-12 | Field Extractor | Infrastructure | Text → trường nghiệp vụ | rapidfuzz + zone map |

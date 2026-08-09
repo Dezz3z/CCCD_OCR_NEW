@@ -150,9 +150,11 @@ QR mặt trước CCCD gắn chip chứa dữ liệu số hoá trực tiếp t�
 
 | Lần thử | Ảnh | Kỹ thuật |
 |---|---|---|
-| 1 | `v1` toàn ảnh | `cv2.wechat_qrcode.WeChatQRCode` (mạnh nhất với QR mờ/nghiêng) |
-| 2 | `v1` toàn ảnh | `pyzbar.decode` (thuật toán khác, bắt được ca WeChat trượt) |
-| 3 | `v1` góc phải-trên phóng 2× | QR trên CCCD nằm ở góc này |
+| 1 | `v0` độ phân giải gốc | `zxingcpp.read_barcodes` (`try_rotate` · `try_downscale` · `try_invert`) |
+| 2 | `v1` phóng 2× | Cùng bộ giải mã — bù ca QR quá nhỏ sau khi thu về 1600px |
+| 3 | `v0` góc phải-trên, làm nét rồi phóng 3× | QR trên CCCD nằm ở góc này |
+
+> ⭐ Bộ giải mã là **`zxing-cpp`**, không phải WeChat/pyzbar như bản D2.0 gốc — lý do và số liệu đo thật: [`07-module-ocr.md §7.4.3`](07-module-ocr.md#743-zxingqrdecoder).
 
 > ⭐ **Rút từ 5 xuống 3 lần thử.** Hai lần cuối (quét 4 góc phần tư) có lợi ích biên rất thấp nhưng tốn ~0.8 giây ở ca xấu. Nếu 3 lần đều trượt thì QR thực sự không đọc được, và kênh MRZ đã đủ bù.
 
