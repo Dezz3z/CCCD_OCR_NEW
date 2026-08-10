@@ -24,12 +24,13 @@ from ..preprocessing.image_data import BgrArray, NumpyImageData
 if TYPE_CHECKING:
     from cocas.domain.ports.ocr import PreprocessedImageSet
 
-_READ_OPTIONS = {
-    "formats": zxingcpp.BarcodeFormat.QRCode,
-    "try_rotate": True,
-    "try_downscale": True,
-    "try_invert": True,
-}
+# ⚠️ Passed as explicit keywords, never unpacked from a dict: a mixed-value
+# dict infers as `dict[str, int]` and every one of `read_barcodes`' typed
+# parameters then reads as a type error.
+#
+# `BarcodeFormats`, not `BarcodeFormat` — the singular enum member works at
+# runtime but the parameter is the set type, and `|` on the enum is deprecated.
+_QR_FORMAT = zxingcpp.BarcodeFormats(zxingcpp.BarcodeFormat.QRCode)
 
 _CORNER_WIDTH = 0.55
 _CORNER_HEIGHT = 0.55
@@ -91,7 +92,13 @@ def _read_barcode(image: BgrArray) -> str | None:
     if image.size == 0:
         return None
     try:
-        results = zxingcpp.read_barcodes(image, **_READ_OPTIONS)
+        results = zxingcpp.read_barcodes(
+            image,
+            formats=_QR_FORMAT,
+            try_rotate=True,
+            try_downscale=True,
+            try_invert=True,
+        )
     except Exception:
         logger.opt(exception=True).debug("QR decoder raised while reading")
         return None

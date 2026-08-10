@@ -160,7 +160,15 @@ P7: Nghiệm thu      [    ] ⏳ TODO (1 tuần)
   - 69 test đơn vị mới (33 TD1 · 19 QR · 17 MRZ) — **733 test toàn dự án xanh**, `ruff` sạch, `import-linter` 4/4 hợp đồng
   - `scripts/verify_qr_mrz.py` — công cụ đo tỉ lệ đọc, dùng lại khi có Golden Set
   - ⚠️ **Chỉ tiêu chưa chốt được:** QR đo 18/53 ảnh (~54–81% mặt trước, dải rộng vì ảnh **chưa gán nhãn** trước/sau) — dưới mốc ≥90%. MRZ **chưa đo được**: cần `IRegionRecognizer`, tới tuần 3 mới có
-- [ ] Tuần 3: PaddleOCR adapter + Field Extractor
+- [x] **Tuần 3: PaddleOCR adapter + Side Classifier + Field Extractor + sửa xoay 180°** — hoàn tất 2026-08-10
+  - `PaddleOcrAdapter` (Port 1 `IOcrEngine` + Port 2 `IRegionRecognizer`) — model_dir tường minh, ⭐ **P-01 kiểm chứng bằng cách cắt sạch socket**: 0 lần gọi mạng, không tạo cache tải về
+  - `PaddleOrientationOracle` — hoàn tất tín hiệu xoay 180° cho **mặt trước** (§7.4.1 mục 4), nối vào tiền xử lý qua protocol một phương thức nên tiền xử lý **không phụ thuộc engine**
+  - `HeuristicSideClassifier` (Port 4) — 4 tín hiệu, đo **36/36 đúng** trên ảnh thật
+  - `ZoneAndAnchorExtractor` (Port 7) + `field_patterns` + `text_matching` — 2 chiến lược, `zone_map` **đã hiệu chỉnh bằng ảnh thật**
+  - `scripts/fetch_ocr_models.py` — bước dựng tải 16 MB model về `resources/ocr-models/`
+  - **885 test toàn dự án xanh** (+128), ruff sạch, `mypy --strict` domain+application 0 lỗi, import-linter 4/4
+  - ⭐ **Chỉ tiêu MRZ ≥75% ĐÃ ĐẠT: 22/22 = 100%**, `repairs applied {0: 22}` — bộ sửa lỗi chưa từng phải chạy
+  - ⭐ **Trích trường đo được:** `id_number` **14/14** · `date_of_birth` **12/12** · `full_name` 11/15
 - [ ] Tuần 4: Chuẩn hoá + Fusion + Validation
 
 **Phát hiện khi chạy trên ảnh thật (đã sửa, đã đồng bộ vào `07-module-ocr.md` §7.4.1):**
@@ -193,6 +201,28 @@ P7: Nghiệm thu      [    ] ⏳ TODO (1 tuần)
 
 11. **Ngưỡng `MIN_SHORT_EDGE = 320` làm mất 3 ảnh mà `zxing-cpp` đọc được QR** (21 ảnh đọc được ở mức thô → 18 ảnh qua được pipeline). Đúng đặc tả (tiền điều kiện `IOcrEngine` là cạnh ngắn ≥ 320) nên **giữ nguyên**; ghi lại vì nó là một phần chênh lệch giữa "trần khả năng" và "tỉ lệ thực tế".
 
+**Phát hiện tuần 3 (đã đồng bộ vào `07-module-ocr.md` §7.4.1/§7.4.2/§7.4.4/§7.4.5/§7.4.6, `03` §S6, migration seed):**
+
+12. ⭐ **`lang='vi'` của PaddleOCR không cho model tiếng Việt, và không cho cả PP-OCRv4.** `parse_lang` gộp tiếng Việt vào nhóm `latin`; mục `latin` trong bảng **v4** trỏ tới URL **v3**. Bảng chữ thật sự dùng là `latin_dict.txt` (185 ký tự) phủ **4/42** chữ hoa có dấu tiếng Việt, trong khi `vi_dict.txt` (113 ký tự) phủ 42/42 nhưng **không bao giờ được chọn** — và không có model nào khớp nó (`vi_PP-OCRv3_rec_infer.tar` → **HTTP 404**). Hệ quả: `FULL_NAME` từ kênh OCR **mất dấu chứ không sai chữ**, kiểu hỏng mà hợp nhất xử lý được vì QR mang tên có dấu. Người dùng chốt 2026-08-10: **đo trước, chốt sau** — không đi huấn luyện model riêng khi chưa có bằng chứng nó chặn KPI.
+
+13. ⭐ **Toạ độ `zone_map` gieo sẵn lệch ~0.2 theo trục y ở MỌI trường mặt trước** — lớn hơn chiều cao một trường. Ô `full_name` trỏ đúng vào dòng phụ đề `Citizen Identity Card` và giao nó cho hợp nhất **như tên khách hàng** (6/15 ảnh). Hai trường mặt sau bị đặt ở đáy thẻ, còn thực tế ngày cấp và cơ quan cấp in ở **phía trên**. Đã hiệu chỉnh toàn bộ bằng chân lý từ QR/MRZ, không toạ độ nào chọn bằng mắt. Sau khi sửa: `full_name` 6/15 → **11/15**.
+
+14. ⭐ **Dải quét MRZ cũ (y 0.82–0.98) nằm DƯỚI hai dòng đầu của khối MRZ.** MRZ thật đo được ở **y 0.66–0.93** trên 20 mặt sau. Dải cũ đọc trúng khối địa chỉ và sinh ra chuỗi rác đầy tự tin (`NH<71ENPHU0C<0UANGNAM`). Cùng lúc: **`v3` đọc MRZ tốt hơn `v4`** — 20 khối so với 12 — bác bỏ giả định "nhị phân hoá tốt hơn hẳn cho MRZ" của thiết kế.
+
+15. ⭐ **Chỉ tiêu MRZ đạt 100% (22/22) nhưng cần ĐÚNG HAI thay đổi, không cái nào một mình đủ:** bỏ số kiểm tổng khỏi cổng chặn (36%→73%) **và** nắn lại số kiểm bị chuỗi `<` nuốt mất (73%→100%). Bộ nhận dạng đếm sai chuỗi dài ký tự giống nhau, nên số kiểm cuối dòng 2 hay bị đẩy lệch vài cột hoặc mất hẳn — trong khi mọi cột dữ liệu đọc đúng.
+
+16. ⭐ **Bỏ số kiểm tổng khỏi cổng chặn tạo ra một hồi quy mà test bắt được:** nó chính là thứ ngăn `_repair` tự chế ra kết quả "hợp lệ" từ nhiễu. Sửa bằng ràng buộc "khối **đã sửa** chỉ được tin khi số kiểm tổng cũng khớp". ⚠️ Kèm một tính chất tinh vi của ICAO 9303: **số kiểm tổng không làm chứng cho nhóm số tài liệu ở dòng 1** — cả hai tổng bắt đầu tại `line1[5]` cùng pha 7-3-1 và nhóm đó dài đúng 3 chu kỳ, nên mọi sửa lỗi thoả nhóm đó cũng tự thoả số kiểm tổng. Không đúng với 3 nhóm còn lại, và đó mới là các nhóm đưa trường vào hợp nhất.
+
+17. ⭐ **Tín hiệu "đếm số vùng text ở 0° vs 180°" của thiết kế KHÔNG TỒN TẠI.** Đo trên 18 mặt trước: 17.7 vs 15.8 vùng, độ tin cậy 0.911 vs 0.904 — không phân biệt được. Nguyên nhân: bộ phân loại góc theo dòng của PaddleOCR tự lật **từng dòng**, nên thẻ lộn ngược vẫn cho một trang chữ đầy đủ và tự tin, 74% trong đó sai. Thay bằng **dấu vân chữ in sẵn ở dải trên**: 44/46 đúng cả hai chiều, **0 sai**.
+
+18. ⭐ **`partial_ratio` của rapidfuzz không an toàn với chuỗi ngắn — lỗi ảnh hưởng mọi chỗ so khớp.** Mảnh 2 ký tự `ON` đạt **100 điểm** với `CỘNG HÒA XÃ HỘI CHỦ NGHĨA VIỆT NAM` vì nó là chuỗi con. Đủ để gọi 6/46 thẻ lộn ngược là đúng chiều. Sửa: nhân điểm với `min(1, len(text)/len(anchor))`.
+
+19. ⭐ **Bộ nhận dạng nuốt dấu cách một cách có hệ thống** (`CONG HOAXAHOI`, `SOCIALISTREPUBLIC`, `DANGDUY NGHIA`), làm mất ~18 điểm khi so với anchor viết đúng — đủ đẩy chính tiêu đề của thẻ xuống dưới ngưỡng. Sửa: bỏ hẳn khoảng trắng trước khi so. Kết quả: oracle từ 39/46 lên **44/46**, không thêm ca sai nào.
+
+20. **`recognize_region()` trên một dải KHÔNG rẻ theo tỉ lệ diện tích** — dải cao 32% tốn 41% chi phí toàn thẻ, vì bộ dò của PaddleOCR chuẩn hoá theo cạnh dài mà dải full-width có cùng cạnh dài với thẻ. Hệ quả: đã cho khâu đọc dải tiêu đề của bộ phân loại mặt **chạy lười** (QR/MRZ đã chốt 36/46 ảnh, và trên 36 ảnh đó anchor chưa từng đổi kết luận). Quy trình P3 nên nhận dạng toàn thẻ **một lần** rồi dùng lại các vùng.
+
+21. **Hai tín hiệu texture của §7.4.2 (chân dung/vân tay) không triển khai** — cần Haar cascade, thêm tệp nhị phân phải đóng gói. Bốn tín hiệu còn lại đã phân loại 36/36 đúng. Bỏ theo P-10, có số liệu chống lưng, ghi rõ để thêm lại nếu Golden Set đòi.
+
 **Milestones:**
 - M2: 2 ảnh CCCD thật → 6 trường đúng (chạy offline)
 
@@ -206,14 +236,16 @@ P7: Nghiệm thu      [    ] ⏳ TODO (1 tuần)
 - p95 latency: ≤9s
 
 **Risks:**
-- 🔴 PaddleOCR tải model từ mạng (vi phạm P-01)
-  - 🎯 Tuần 3: chỉ định model_dir tường minh, test offline
-- 🔴 MRZ không đạt 75% (không có charset whitelist)
-  - 🎯 **Chưa kiểm chứng được ở tuần 2** — `Td1MrzReader` phụ thuộc `IRegionRecognizer`, mà port này chỉ có hiện thực thật từ tuần 3. Logic TD1 (checksum, ép bộ ký tự theo vị trí, sửa lỗi có giới hạn) đã xong và test kỹ bằng khối MRZ thật; **phần chưa biết là engine đọc dải MRZ ra chuỗi tốt tới đâu**. Đo bằng `scripts/verify_qr_mrz.py` ngay khi cắm adapter ở tuần 3
-- 🔴 QR chưa đạt ≥90% — đo được 18/53 ảnh (~54–81% mặt trước)
+- ✅ ~~PaddleOCR tải model từ mạng (vi phạm P-01)~~ — **ĐÓNG 2026-08-10.** `model_dir` tường minh, thiếu tệp → ném lỗi chứ không tải. Kiểm chứng bằng cách **cắt sạch lời gọi socket** rồi chạy `warm_up()` + `recognize()`: cả hai thành công, 0 lần gọi mạng, không có `~/.paddleocr`. Giữ làm test hồi quy `tests/security/test_ocr_offline.py`
+- ✅ ~~MRZ không đạt 75%~~ — **ĐÓNG 2026-08-10: đo 22/22 = 100%**, 0 lần phải sửa lỗi, 2/2 ảnh có cả hai kênh cho số CCCD khớp nhau. ⚠️ Mẫu chưa gán nhãn nên Golden Set vẫn cần để chốt chính thức
+- 🟠 **`FULL_NAME` từ kênh OCR mất dấu tiếng Việt** (phát hiện #12) — model latin không có đầu ra cho 38/42 chữ hoa có dấu, và **không tồn tại** model rec tiếng Việt để thay
+  - 🎯 Người dùng chốt 2026-08-10: **đo trước, chốt sau**. Đo được: `full_name` 11/15 khớp chính xác; 3/4 ca còn lại chỉ **thiếu dấu cách**, 1 ca sai một ký tự. QR là nguồn chính (trọng số 1.00) nên ảnh hưởng nhỏ hơn lo ngại ban đầu. Quyết định cuối khi có Golden Set
+- 🟠 **Ngân sách p95 ≤ 9 s cần theo dõi** (phát hiện #20) — nhận dạng toàn thẻ 2.7 s, dải 1.1–1.2 s. Ước tính hiện tại ~3.9 s/ảnh sau khi cho anchor chạy lười
+  - 🎯 P3: quy trình nhận dạng toàn thẻ **một lần** rồi dùng lại các vùng, thay vì nhiều lượt đọc dải
+- 🔴 QR chưa đạt ≥90% — ước lượng **16/24 ≈ 67% mặt trước** (mẫu số suy ra từ sự hiện diện MRZ, chặt hơn dải 54–81% của tuần 2 nhưng vẫn không phải nhãn thật)
   - 🎯 Người dùng chốt 2026-08-09: **viết code tiếp, chốt KPI khi có Golden Set**. Nếu Golden Set xác nhận vẫn hụt, cân nhắc thêm lần thử thứ 4 (dò khối QR rồi cắt sát) hoặc hạ chỉ tiêu cho khớp thực tế
 - 🔴 Chưa có Golden Set 200 cặp ảnh **đã gán nhãn trước/sau**
-  - 🎯 **Chặn việc chốt cả 2 KPI của P2.** 53 ảnh mẫu hiện có không gán nhãn nên không tính được mẫu số cho tỉ lệ đọc QR
+  - 🎯 **Vẫn chặn việc chốt chính thức mọi KPI của P2**, kể cả những chỉ tiêu đã đo đạt. Cũng là thứ duy nhất đo được **False Confidence ≤ 0.5%** — chỉ tiêu chặn phát hành mà tới giờ **chưa đo được lần nào**
 
 ---
 
@@ -319,9 +351,9 @@ P7: Nghiệm thu      [    ] ⏳ TODO (1 tuần)
 
 | # | Checkpoint | Phase | Khi quá hạn | Xử lý |
 |---|---|---|---|---|
-| 1 | Golden Set 200 cặp CCCD | P0 | Không kiểm chứng được MRZ, False Confidence | Chuẩn bị ngay từ P0 |
-| 2 | PaddleOCR tải model offline | P2w3 | Vi phạm P-01 | `model_dir` tường minh + test ngắt mạng |
-| 3 | MRZ ≥75% checksum | P2w2 | Hụt chỉ tiêu độ chính xác | Kiểm chứng sớm, phương án B |
+| 1 | Golden Set 200 cặp CCCD | P0 | Không kiểm chứng được MRZ, False Confidence | ⚠️ **VẪN THIẾU** — giờ là thứ duy nhất chặn việc chốt KPI |
+| 2 | ~~PaddleOCR tải model offline~~ | P2w3 | ~~Vi phạm P-01~~ | ✅ **ĐÓNG 2026-08-10** — `model_dir` tường minh + test cắt socket thật |
+| 3 | ~~MRZ ≥75% checksum~~ | P2w2 | ~~Hụt chỉ tiêu độ chính xác~~ | ✅ **ĐÓNG 2026-08-10** — đo 22/22 = 100%, 0 lần sửa lỗi |
 | 4 | Build .exe thử | P1 | PyInstaller không đóng gói được | Test ngay P1 |
 | 5 | PostgreSQL portable Windows | P1 | Chặn P5 | Spike ở P1, không đợi P5 |
 | 6 | Font LibreOffice | P3 | PDF sai layout | Đóng gói font đầu P3 |

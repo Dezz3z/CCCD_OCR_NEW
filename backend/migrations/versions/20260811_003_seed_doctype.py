@@ -2,14 +2,10 @@
 
 Seeds the single v1.0 `document_type` row: `CCCD_CHIP`.
 
-⚠️ `zone_map` coordinates are PROVISIONAL placeholders, not measured from
-real card images — the Golden Set (200 labeled CCCD image pairs) has not
-been collected yet (progress.md checkpoint #1, roadmap §14.5 risk
-"`zone_map` khởi tạo sai lệch nhiều"). They exist so the column is non-null
-and the `ZONE` extraction strategy has *something* to try; P2 week 3-4 must
-recalibrate them against real photos before they're trustworthy.
-`anchor_patterns` label text IS reliable — these are the literal Vietnamese
-field labels printed on every CCCD chip card, not measured data.
+⭐ `zone_map` was recalibrated against real cards on 2026-08-10 (P2 week 3) —
+see the comment on `_ZONE_MAP` for the method and for how far off the original
+placeholders were. `anchor_patterns` label text was always reliable: these are
+the literal Vietnamese labels printed on every CCCD chip card.
 
 Idempotent: `ON CONFLICT (code) DO NOTHING`.
 
@@ -43,30 +39,70 @@ _FIELD_SCHEMA = [
     {"key": "issue_place", "type": "text", "required": True, "label": "Nơi cấp"},
 ]
 
-# PROVISIONAL — relative (0..1) boxes on the warped 1012x638 standardized
-# frame (§7.4.1). Rough approximations of typical CCCD-chip layout, NOT
-# calibrated against real cards. Corrected via the Settings UI once real
-# images are available (document_type.zone_map is designed to be editable).
+# ⭐ CALIBRATED 2026-08-10 against real cards, replacing the provisional guesses
+# this migration originally shipped. Relative (0..1) boxes on the warped
+# 1012x638 frame (§7.4.1).
+#
+# Method: run the pipeline over the sample photos, take the QR payload (fronts)
+# and the checksum-valid MRZ block (backs) as ground truth, and record the
+# bounding box of the region holding each known value. The boxes below are the
+# observed range plus 0.03 padding — no coordinate here was chosen by eye.
+#
+# ⚠️ The originals were wrong by roughly 0.2 in y on every front field, which
+# is more than a field height: `full_name` pointed at the `Citizen Identity
+# Card` subtitle and handed it to fusion as a customer's name. The two back
+# fields were placed near the bottom of the card; on a real chip CCCD the issue
+# date and issuing authority are printed near the TOP, above the fingerprints.
+#
+# | Field | Was | Measured y | n |
+# |---|---|---|---|
+# | `id_number` | y 0.14 | 0.40–0.43 | 15 fronts |
+# | `full_name` | y 0.28 | 0.54–0.57 | 15 fronts |
+# | `date_of_birth` | y 0.40 | 0.61–0.63 | 12 fronts |
+# | `expiry_date` | y 0.78 | 0.88–0.93 | 9 fronts |
+# | `issue_date` | y 0.78 (BACK) | 0.11–0.15 | 14 backs |
+# | `issue_place` | y 0.62 | 0.16–0.20 | 20 backs |
+# | `mrz` | y 0.82 | 0.66–0.93 | 20 backs |
+#
+# Still editable at runtime (that was always the point of storing it here), but
+# it is now a measurement rather than a placeholder.
 _ZONE_MAP = {
-    "full_name": {"x": 0.38, "y": 0.28, "w": 0.57, "h": 0.10, "side": "FRONT"},
-    "id_number": {"x": 0.38, "y": 0.14, "w": 0.45, "h": 0.09, "side": "FRONT"},
-    "date_of_birth": {"x": 0.38, "y": 0.40, "w": 0.30, "h": 0.08, "side": "FRONT"},
-    "issue_date": {"x": 0.10, "y": 0.78, "w": 0.35, "h": 0.09, "side": "BACK"},
-    "expiry_date": {"x": 0.10, "y": 0.78, "w": 0.35, "h": 0.09, "side": "FRONT"},
-    "issue_place": {"x": 0.10, "y": 0.62, "w": 0.80, "h": 0.14, "side": "BACK"},
+    "id_number": {"x": 0.26, "y": 0.37, "w": 0.54, "h": 0.15, "side": "FRONT"},
+    "full_name": {"x": 0.26, "y": 0.51, "w": 0.55, "h": 0.14, "side": "FRONT"},
+    "date_of_birth": {"x": 0.28, "y": 0.58, "w": 0.53, "h": 0.13, "side": "FRONT"},
+    "expiry_date": {"x": 0.00, "y": 0.85, "w": 0.40, "h": 0.14, "side": "FRONT"},
+    "issue_date": {"x": 0.00, "y": 0.08, "w": 0.57, "h": 0.17, "side": "BACK"},
+    "issue_place": {"x": 0.13, "y": 0.13, "w": 0.44, "h": 0.16, "side": "BACK"},
+    "mrz": {"x": 0.02, "y": 0.62, "w": 0.96, "h": 0.36, "side": "BACK"},
 }
 
 # Literal Vietnamese labels printed on the card — reliable, not calibrated data.
+#
+# ⭐ Two corrections on 2026-08-10, both from reading real cards:
+#
+# 1. `expiry_date` moved FRONT→ ... it was listed under `back`, but `Có giá trị
+#    đến / Date of expiry` is printed on the front, as the last line (y≈0.89).
+# 2. `issue_place` has **no label on a CCCD**. The card prints the authority
+#    itself — `CỤC TRƯỞNG CỤC CẢNH SÁT QUẢN LÝ HÀNH CHÍNH VỀ TRẬT TỰ XÃ HỘI` —
+#    so the anchors here are the authority's own words, matched fuzzily. They
+#    fold to the same string `IssuePlaceNormalizer` canonicalizes against.
+#
+# `id_number` keeps `Số / No.` as one phrase: `Số` alone is two characters and
+# fuzzy-matches `SOCIALIST REPUBLIC` at 100.
 _ANCHOR_PATTERNS = {
     "front": {
         "full_name": ["Họ và tên", "Full name"],
-        "id_number": ["Số", "No."],
+        "id_number": ["Số / No.", "Số:", "No.:"],
         "date_of_birth": ["Ngày sinh", "Date of birth"],
+        "expiry_date": ["Có giá trị đến", "Date of expiry"],
     },
     "back": {
         "issue_date": ["Ngày, tháng, năm", "Date, month, year"],
-        "issue_place": ["Nơi cấp", "Place of issue"],
-        "expiry_date": ["Có giá trị đến", "Date of expiry"],
+        "issue_place": [
+            "CỤC TRƯỞNG CỤC CẢNH SÁT QUẢN LÝ HÀNH CHÍNH VỀ TRẬT TỰ XÃ HỘI",
+            "CỤC CẢNH SÁT QUẢN LÝ HÀNH CHÍNH VỀ TRẬT TỰ XÃ HỘI",
+            "BỘ CÔNG AN",
+        ],
     },
 }
 

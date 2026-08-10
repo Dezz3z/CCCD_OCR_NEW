@@ -7,7 +7,8 @@ import numpy as np
 from cocas.domain.exceptions import ImageDecodeError, ImageTooSmallError
 from cocas.domain.ports.ocr import PreprocessProfile
 
-from .image_data import BgrArray
+from .cv_types import as_optional_bgr
+from .orientation import IOrientationOracle
 from .variant_set import LazyPreprocessedImageSet
 
 MIN_SHORT_EDGE = 320
@@ -18,7 +19,14 @@ class OpenCvPreprocessor:
 
     Decoding is the only eager work: everything else happens when a channel
     first reaches for the variant it needs.
+
+    ⭐ The orientation oracle is optional so this adapter stays usable — and
+    testable — with no OCR models installed. Without one, only the MRZ signal
+    votes on 180° rotation, which covers backs but never fronts (§7.4.1).
     """
+
+    def __init__(self, orientation_oracle: IOrientationOracle | None = None) -> None:
+        self._orientation_oracle = orientation_oracle
 
     def prepare(
         self,
@@ -33,7 +41,7 @@ class OpenCvPreprocessor:
             )
 
         buffer = np.frombuffer(image_bytes, dtype=np.uint8)
-        decoded: BgrArray | None = cv2.imdecode(buffer, cv2.IMREAD_COLOR)
+        decoded = as_optional_bgr(cv2.imdecode(buffer, cv2.IMREAD_COLOR))
         if decoded is None:
             raise ImageDecodeError(
                 "Không đọc được ảnh: tệp không phải định dạng ảnh hợp lệ.",
@@ -48,4 +56,6 @@ class OpenCvPreprocessor:
                 hint="Hãy chụp lại ảnh CCCD ở độ phân giải cao hơn.",
             )
 
-        return LazyPreprocessedImageSet(decoded, exif_orientation, profile)
+        return LazyPreprocessedImageSet(
+            decoded, exif_orientation, profile, self._orientation_oracle
+        )

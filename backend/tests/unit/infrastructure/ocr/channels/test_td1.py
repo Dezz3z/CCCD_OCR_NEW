@@ -109,6 +109,92 @@ class TestNormalizeLines:
         assert lines[0].startswith("IDVNM179002546")
 
 
+class TestLineClassification:
+    """⭐ Slots are decided by structure, never by the order lines were found.
+
+    Recognition regularly misses one of the three lines. Assuming "the first
+    line found is line 1" puts the name line in line 1's slot, where its
+    letters get force-digitized into a citizen id — six confident wrong values
+    out of one missed line. Measured on real cards before this existed.
+    """
+
+    def test_recognizes_each_line_of_a_real_block(self):
+        assert [td1.classify_line(line) for line in REAL_MRZ_LINES] == [0, 1, 2]
+
+    def test_a_name_line_never_lands_in_the_id_slot(self):
+        assert td1.classify_line("TRAN<<THI<THUY<DUONG<<<<<<<<<<") == 2
+
+    def test_tolerates_a_misread_sex_character(self):
+        """A real card came back with `E` where `F` is printed."""
+        assert td1.classify_line("9706305E3706303VNM<<<<<<<<<<<2") == 1
+
+    def test_an_address_line_never_reaches_a_data_slot(self):
+        """The label above the MRZ has no digits, so it can only look like a
+        name line — never like line 1 or line 2, the two that carry fields."""
+        assert td1.classify_line("Noi thuong tru / Place of residence") == 2
+
+    @pytest.mark.parametrize("line", ["", "ID", "IDVNM17900"])
+    def test_rejects_lines_too_short_to_be_mrz(self, line):
+        assert td1.classify_line(line) is None
+
+
+class TestSelectLines:
+    def test_picks_the_block_out_of_surrounding_text(self):
+        noise = "Noi thuong tru / Place of residence\nPhuoc Long, Nha Trang\n"
+        assert td1.select_lines(noise + "\n".join(REAL_MRZ_LINES)) == REAL_MRZ_LINES
+
+    def test_splits_a_block_the_recognizer_returned_as_one_run(self):
+        assert td1.select_lines("".join(REAL_MRZ_LINES)) == REAL_MRZ_LINES
+
+    def test_fills_a_missing_name_line_rather_than_shifting_the_others(self):
+        selected = td1.select_lines("\n".join(REAL_MRZ_LINES[:2]))
+        assert selected is not None
+        assert selected[:2] == REAL_MRZ_LINES[:2]
+        assert selected[2] == td1.FILLER * td1.LINE_LENGTH
+
+    def test_refuses_when_the_two_data_lines_are_not_both_present(self):
+        """⭐ Lines 1 and 2 carry every field MRZ contributes — without them
+        there is nothing to report, and guessing is worse than silence."""
+        assert td1.select_lines(REAL_MRZ_LINES[2]) is None
+
+    def test_ignores_mixed_case_prose(self):
+        assert td1.select_lines("Dac diem nhan dang / Personal identification") is None
+
+
+class TestTailRealignment:
+    """⭐ The single largest cause of checksum failure on real cards.
+
+    A TD1 line ends with a long run of `<` and then one check digit. Recognizers
+    miscount identical glyph runs, so that digit lands a few columns early or is
+    swallowed whole — while every data column is read correctly.
+    """
+
+    def test_recovers_a_check_digit_pushed_into_the_filler_run(self):
+        damaged = list(REAL_MRZ_LINES)
+        damaged[1] = "7902273F3902275VNM<<<<<<<<2<<<"
+        assert td1.parse(damaged).composite_valid is True
+
+    def test_leaves_a_correctly_placed_check_digit_alone(self):
+        assert td1.parse(list(REAL_MRZ_LINES)).lines == REAL_MRZ_LINES
+
+    def test_does_not_guess_when_the_tail_holds_several_digits(self):
+        damaged = list(REAL_MRZ_LINES)
+        damaged[1] = "7902273F3902275VNM<<<<<7<<2<<"[:30].ljust(30, "<")
+        assert td1.parse(damaged).lines[1].endswith("<")
+
+
+class TestCompositeCheck:
+    def test_a_clean_block_satisfies_it(self):
+        assert td1.composite_check_passes(list(REAL_MRZ_LINES)) is True
+
+    def test_group_checks_pass_without_it(self):
+        """A block missing only its whole-block digit is still trustworthy."""
+        damaged = list(REAL_MRZ_LINES)
+        damaged[1] = damaged[1][:29] + td1.FILLER
+        assert td1.group_checks_pass(damaged) is True
+        assert td1.composite_check_passes(damaged) is False
+
+
 class TestRepair:
     def test_recovers_a_letter_that_replaced_a_digit(self):
         damaged = list(REAL_MRZ_LINES)

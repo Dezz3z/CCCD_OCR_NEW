@@ -125,7 +125,7 @@ Vi phạm = phải sửa, không phải tranh luận.
 
 **Giai đoạn 1 (Thiết kế): ✅ HOÀN THÀNH** — tài liệu D2.0 đã đóng băng, 0 lỗi kiến trúc đã biết.
 
-**Giai đoạn 2 (Triển khai): P0 ✅ + P1 ✅ HOÀN THÀNH (2026-08-09). P2 (OCR) đang làm — tuần 1 (tiền xử lý ảnh) ✅ + tuần 2 (kênh QR/MRZ) ✅ xong 2026-08-09.**
+**Giai đoạn 2 (Triển khai): P0 ✅ + P1 ✅ HOÀN THÀNH (2026-08-09). P2 (OCR) đang làm — tuần 1 (tiền xử lý ảnh) ✅ + tuần 2 (kênh QR/MRZ) ✅ xong 2026-08-09, tuần 3 (engine + phân loại mặt + trích trường) ✅ xong 2026-08-10.**
 Chi tiết đầy đủ từng module — xem [progress.md](progress.md) (cập nhật theo từng module, không rút gọn).
 
 ### Kiến trúc đã triển khai (P0 + P1)
@@ -135,7 +135,7 @@ Backend Python (`backend/src/cocas/`) đã có đủ 3/4 tầng theo Dependency 
 | Tầng | Trạng thái |
 |---|---|
 | `domain/` | ✅ Đầy đủ — 10 Value Object · 14 enum · 8 Entity · 5 Domain Service · 18 Port (+ fake/null cho mỗi Port) · cây ngoại lệ |
-| `infrastructure/` | Một phần — **persistence** (19 bảng, 8 migration, 7/8 repository + UnitOfWork; `Contract` repo **hoãn có chủ đích** vì phụ thuộc `RenderContextBuilder` chưa tồn tại tới P3) · **security** (DPAPI thật + AES-256-GCM + blind index) · **logging** (Loguru 3 sink + PII filter 2 lớp) · **system** (`SystemClock`, `Uuid7Generator`) · **ocr/preprocessing** (`OpenCvPreprocessor` + 5 biến thể tạo lười — P2 tuần 1) · **ocr/channels** (`ZxingQrDecoder` + `Td1MrzReader` + `td1.py` — P2 tuần 2). Chưa có: OCR engine adapter, side classifier, field extractor, storage, documents, queue |
+| `infrastructure/` | Một phần — **persistence** (19 bảng, 8 migration, 7/8 repository + UnitOfWork; `Contract` repo **hoãn có chủ đích** vì phụ thuộc `RenderContextBuilder` chưa tồn tại tới P3) · **security** (DPAPI thật + AES-256-GCM + blind index) · **logging** (Loguru 3 sink + PII filter 2 lớp) · **system** (`SystemClock`, `Uuid7Generator`) · ⭐ **ocr đầy đủ 7/7 Port**: `preprocessing` (`OpenCvPreprocessor` + 5 biến thể tạo lười + `IOrientationOracle`) · `channels` (`ZxingQrDecoder`, `Td1MrzReader`, `td1.py`) · `engines` (`PaddleOcrAdapter`, `PaddleOrientationOracle`) · `classification` (`HeuristicSideClassifier`) · `extraction` (`ZoneAndAnchorExtractor`, `field_patterns`) · `text_matching.py`. Chưa có: storage, documents, queue |
 | `application/` | ⏳ Rỗng — chờ P3 |
 | `presentation/` | Một phần — middlewares (CORS, security headers, correlation-id, local token) · chưa có router/endpoint nào (64 endpoint là việc P3) |
 | `container.py` | ✅ Composition Root nối toàn bộ đồ thị phụ thuộc thật — ngoại lệ duy nhất được import-linter cho phép import cả 4 tầng |
@@ -154,15 +154,27 @@ Mọi mục dưới đây đã đồng bộ ngược vào `docs/design/`, không
 - ⭐ **Bộ giải mã QR là `zxing-cpp`, không phải WeChat/pyzbar** (đổi 2026-08-09 sau khi đo thật 53 ảnh). `cv2.QRCodeDetector` chỉ đọc 1/53; `pyzbar` không chạy nổi vì `libzbar-64.dll` cần VC++ 2013 Redistributable (**máy khách cũng sẽ hỏng y hệt**); `cv2.wechat_qrcode` cần `opencv-contrib` và tốn 4060 ms/ảnh. `zxing-cpp` cùng độ chính xác WeChat, 66 ms/ảnh, wheel tự chứa. Đã đồng bộ vào `07`, `03`, `01`, `11`, `13`, `pyproject.toml`, `build.spec`.
 - ⭐ **Số CCCD trong MRZ nằm ở vùng dữ liệu tuỳ chọn (dòng 1, vị trí 15–26), KHÔNG ở trường số tài liệu** (vị trí 5–13 là **CMND cũ 9 số**). Lấy nhầm sẽ khiến quy tắc hợp nhất #5 `CARD_MISMATCH` báo động giả với mọi thẻ.
 - ⭐ **Ánh xạ cưỡng bức bộ ký tự MRZ phải áp theo vị trí, không toàn cục** — A–Z là ký tự hợp lệ trong TD1, nên áp `O→0 · D→0 · S→5 · B→8` toàn cục sẽ phá mọi họ tên Việt (`DO`→`00`, `HOANG`→`H0ANG`). Chỉ ép chữ→số trong các dải TD1 định nghĩa là số; dòng 3 (họ tên) không bao giờ bị ép.
+- ⭐ **`lang='vi'` của PaddleOCR không cho model tiếng Việt, cũng không cho PP-OCRv4** (đo 2026-08-10). Nó gộp về `latin_PP-OCRv3_rec` với `latin_dict.txt` — phủ **4/42** chữ hoa có dấu tiếng Việt. `vi_dict.txt` phủ 42/42 nhưng không bao giờ được chọn, và **không tồn tại** model khớp nó (404). Hệ quả: `FULL_NAME` từ OCR **mất dấu chứ không sai chữ**; QR là nguồn chính.
+- ⭐ **`charset_hint` KHÔNG được xoá ký tự.** Mọi bên gọi làm số học theo vị trí trên kết quả, nên xoá một ký tự nhận nhầm đẩy lệch mọi trường phía sau → sáu giá trị sai đầy tự tin. Adapter chỉ chuyển hoa; việc ánh xạ là của kênh biết định dạng.
+- ⭐ **Toạ độ `zone_map` gieo sẵn lệch ~0.2 theo y ở mọi trường mặt trước** — đã hiệu chỉnh bằng chân lý từ QR/MRZ (2026-08-10). Ô `full_name` cũ trỏ vào dòng `Citizen Identity Card` và giao nó cho hợp nhất như tên khách hàng. Kèm **danh sách chữ in sẵn** làm lớp chặn độc lập với độ chính xác toạ độ.
+- ⭐ **Kênh MRZ đọc `v3` trước, `v4` dự phòng** — giả định "nhị phân hoá tốt hơn hẳn cho MRZ" sai với PaddleOCR (v4 mất 8/20 khối). Dải quét cũng đã hiệu chỉnh: **y 0.62–0.98**, không phải 0.82–0.98.
+- ⭐ **4 số kiểm nhóm là cổng chặn, số kiểm tổng là nhân chứng** — bắt buộc cả 5 làm rớt 64% khối đúng. ⚠️ Nhưng khối **đã sửa lỗi** phải được số kiểm tổng xác nhận, nếu không `_repair` sẽ tự chế ra "hợp lệ" từ nhiễu. Và số kiểm tổng **không** làm chứng cho nhóm số tài liệu dòng 1 (cùng pha trọng số).
+- ⭐ **Tín hiệu "đếm vùng text ở 0° vs 180°" không tồn tại** — 17.7 vs 15.8 vùng, conf 0.911 vs 0.904. PaddleOCR lật từng dòng nên thẻ lộn ngược vẫn ra chữ đầy đủ và tự tin, 74% sai. Thay bằng **dấu vân chữ in sẵn ở dải TRÊN** (phải là cụm chỉ có ở phần ba trên — dùng cụm ở đáy thẻ thì gọi sai 6/46).
+- ⭐ **`partial_ratio` không an toàn với chuỗi ngắn** — mảnh 2 ký tự `ON` đạt 100 điểm với `CỘNG HÒA XÃ HỘI…`. Mọi so khớp phải nhân điểm với `min(1, len(text)/len(anchor))`, và phải **bỏ hẳn khoảng trắng** vì bộ nhận dạng nuốt dấu cách có hệ thống.
 
-### Ràng buộc cần biết trước khi bắt đầu P2
+### Ràng buộc cần biết khi làm tiếp P2
 
-1. ⭐ **Vẫn thiếu Golden Set 200 cặp ảnh CCCD đã gán nhãn và 2 file `.docx` thật** — chặn kiểm chứng KPI P2 (QR ≥90%, MRZ ≥75%, False Confidence ≤0.5%). 53 ảnh mẫu hiện có **không gán nhãn trước/sau**, nên không tính được mẫu số cho tỉ lệ đọc QR: đo được 18/53 ảnh, tương đương một dải rộng 54–81% mặt trước. Xem "Việc cần người dùng cung cấp" trong `progress.md`.
-   - **MRZ chưa đo được lần nào** — `Td1MrzReader` phụ thuộc `IRegionRecognizer`, chỉ có hiện thực thật từ tuần 3. Logic TD1 đã test kỹ bằng khối MRZ thật; phần chưa biết là engine đọc dải MRZ ra chuỗi tốt tới đâu. Dùng `backend/scripts/verify_qr_mrz.py` để đo ngay khi cắm adapter.
+0. ⭐ **Model OCR không nằm trong Git.** Chạy `python backend/scripts/fetch_ocr_models.py` một lần để tải 16 MB về `backend/resources/ocr-models/`. Thiếu nó thì `PaddleOcrAdapter.warm_up()` **ném lỗi chứ không tải** (P-01), và các test trong `tests/security/test_ocr_offline.py` tự bỏ qua.
+
+1. ⭐ **Vẫn thiếu Golden Set 200 cặp ảnh CCCD đã gán nhãn và 2 file `.docx` thật.** Đây giờ là thứ **duy nhất** chặn việc chốt KPI P2, và là thứ duy nhất đo được **False Confidence ≤0.5%** — chỉ tiêu chặn phát hành, tới giờ **chưa đo được lần nào**.
+   - **MRZ ≥75%: đã đo 22/22 = 100%** (2026-08-10), 0 lần phải sửa lỗi, 2/2 ảnh có cả hai kênh cho số CCCD khớp nhau.
+   - **QR ≥90%: ước lượng 16/24 ≈ 67% mặt trước** — mẫu số suy ra từ sự hiện diện MRZ, chặt hơn dải 54–81% cũ nhưng vẫn không phải nhãn thật.
+   - Đo lại bất cứ lúc nào: `python backend/scripts/verify_qr_mrz.py "<thư mục ảnh>"`.
 2. **PyInstaller + asyncpg**: `hiddenimports = ["asyncpg.pgproto"]` không đủ — asyncpg nạp submodule Cython biên dịch sẵn không thấy được qua static analysis. Dùng `collect_submodules("asyncpg")` (đã áp dụng trong `build.spec`).
 3. **`console=False` (bản production) sẽ crash lúc khởi động** — `loguru_config.configure_logging()`'s console sink gọi `logger.add(sys.stderr, ...)`, và `sys.stderr` là `None` dưới chế độ windowed của PyInstaller. Cố ý để lại cho P5/P6 (khi Supervisor đọc log qua file), **không phải bug đã sửa**.
-4. ⭐ **Tuần 3 phải hoàn tất khâu sửa xoay 180° cho mặt trước.** Tuần 1 chỉ xử lý được mặt sau (dựa vào vị trí khối MRZ); mặt trước không có tín hiệu nào đủ tin cậy nếu chưa có engine — dùng model `cls` của PaddleOCR khi cắm `PaddleOcrAdapter`. Xem `progress.md` mục P2 phát hiện #3, #4.
-5. Kích thước gói `onedir` đo thật ở bản trial ~505 MB (tài liệu ước tính 180 MB cho bản cuối) — cần theo dõi khi thêm `resources/ocr-models` ở P5/P6, tránh vỡ ngân sách 1.5 GB (§14.5 sổ rủi ro).
+4. ✅ ~~Sửa xoay 180° cho mặt trước~~ — **xong tuần 3.** ⚠️ Nhưng **không** bằng model `cls` như dự kiến: tín hiệu `cls`/đếm vùng text không phân biệt được hai chiều (xem quyết định ở trên). Dùng dấu vân chữ in sẵn ở dải trên; đo 44/46 đúng cả hai chiều, **0 sai**.
+5. Kích thước gói `onedir` đo thật ở bản trial ~505 MB (tài liệu ước tính 180 MB cho bản cuối) — nay cộng thêm **16 MB** `resources/ocr-models` (nhẹ hơn ước tính 850 MB rất nhiều vì model PP-OCRv3 mobile nhỏ). Vẫn theo dõi ngân sách 1.5 GB (§14.5 sổ rủi ro).
+6. ⚠️ **Ngân sách p95 ≤ 9 s cần theo dõi ở P3.** Đo thật: `recognize()` toàn thẻ 2.7 s, `recognize_region()` một dải 1.1–1.2 s (**không** rẻ theo tỉ lệ diện tích — bộ dò chuẩn hoá theo cạnh dài). Quy trình P3 nên nhận dạng toàn thẻ **một lần** rồi dùng lại các vùng, thay vì nhiều lượt đọc dải.
 
 ### Quy trình làm việc Giai đoạn 2
 

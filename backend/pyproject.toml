@@ -164,6 +164,12 @@ module = "cocas.infrastructure.*"
 disallow_untyped_calls = false
 warn_return_any = false
 
+[[tool.mypy.overrides]]
+# Third-party packages that ship no `py.typed` marker. Listed explicitly rather
+# than globally so a library that *does* gain stubs starts being checked.
+module = ["paddleocr.*", "paddle.*", "zxingcpp.*", "cv2.*"]
+ignore_missing_imports = true
+
 # ============================================================================
 # PYTEST & COVERAGE
 # ============================================================================

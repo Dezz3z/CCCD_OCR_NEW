@@ -170,16 +170,16 @@ MRZ chuẩn ICAO 9303 TD1: 3 dòng × 30 ký tự, **có ký tự kiểm tra**.
 
 | Bước | Nội dung |
 |---|---|
-| 6.1 | Định vị: quét 20% đáy `v4`, tìm dải có mật độ `<` cao. Nếu `warp_succeeded` → dùng toạ độ cố định |
-| 6.2 | ⭐ **Đọc bằng `recognize_region()` bình thường** (PaddleOCR không giới hạn được bộ ký tự lúc giải mã) |
+| 6.1 | ⭐ Định vị: dải **y 0.62–0.98** đã hiệu chỉnh bằng ảnh thật (cũ 0.82–0.98 nằm dưới hai dòng đầu, đọc trúng khối địa chỉ). Việc chọn đâu là MRZ do bước 6.5 làm theo cấu trúc, không do toạ độ |
+| 6.2 | ⭐ **Đọc bằng `recognize_region()` trên `v3` trước, `v4` dự phòng** (nhị phân hoá mất 8/20 khối — xem [`07 §7.4.4`](07-module-ocr.md#744-td1mrzreader)) |
 | 6.3 | ⭐ **Ánh xạ cưỡng bức hậu xử lý** mọi ký tự về `[A-Z0-9<]` theo bảng nhầm lẫn hình dạng: `O,o,Q,D→0` · `I,l,\|→1` · `S,s→5` · `B→8` · `Z,z→2` · `G→6` · `T→7` · `A→4` · `«,‹→<` · chữ thường→hoa · không ánh xạ được → `<` |
 | 6.4 | Chuẩn hoá cấu trúc: ép mỗi dòng đúng 30 ký tự, ghép 3 dòng |
-| 6.5 | Phân tích TD1: dòng 1 loại tài liệu + `VNM` + số tài liệu · dòng 2 ngày sinh + giới tính + **ngày hết hạn** · dòng 3 họ tên |
-| 6.6 | **Xác thực checksum** theo trọng số 7-3-1 của ICAO |
-| 6.7 | Sửa lỗi có kiểm soát: thử hoán vị nhầm lẫn phổ biến — ⭐ **tối đa 3 vị trí** (nâng từ 2 để bù việc mất ràng buộc giải mã) |
-| 6.8 | Chấm điểm: đúng ngay → 0.98 · đúng sau sửa → 0.90 · không bao giờ đúng → 0.50 + cờ `MRZ_CHECKSUM_FAILED` |
+| 6.5 | ⭐ **Gán ô dòng theo cấu trúc**, không theo thứ tự tìm thấy. Phân tích TD1: dòng 1 loại tài liệu + `VNM` + số tài liệu · dòng 2 ngày sinh + giới tính + **ngày hết hạn** · dòng 3 họ tên |
+| 6.6 | ⭐ **Nắn đuôi dòng** (đưa số kiểm bị chuỗi `<` nuốt về đúng cột), rồi **xác thực 4 số kiểm nhóm** theo trọng số 7-3-1 của ICAO. Số kiểm tổng là nhân chứng, không phải cổng chặn |
+| 6.7 | Sửa lỗi có kiểm soát: thử hoán vị nhầm lẫn phổ biến — ⭐ **tối đa 3 vị trí**. Khối đã sửa chỉ được tin khi số kiểm tổng cũng khớp |
+| 6.8 | Chấm điểm: sạch → 0.98 · sửa được hoặc mất số kiểm tổng → 0.90 · không bao giờ đúng → 0.50 + cờ `MRZ_CHECKSUM_FAILED`. ⭐ Giá trị dị dạng bị loại tại đây |
 
-> **Chỉ tiêu:** MRZ checksum hợp lệ **≥ 75%** (không phải 85% như bản D1.x — đã điều chỉnh sau khi xác định PaddleOCR không hỗ trợ charset whitelist). Cần kiểm chứng bằng Golden Set ở P2 tuần 2.
+> ⭐ **Chỉ tiêu ≥ 75% ĐÃ ĐẠT — đo được 22/22 = 100%** trên ảnh thật (2026-08-10), 0 lần phải sửa lỗi, 2/2 ảnh có cả hai kênh cho số CCCD khớp nhau. Chi tiết phương pháp và bảng bóc tách đóng góp của từng thay đổi: [`07 §7.4.4`](07-module-ocr.md#744-td1mrzreader). Vẫn cần Golden Set xác nhận vì mẫu chưa gán nhãn.
 
 > **Giá trị:** MRZ là **nguồn duy nhất ngoài OCR** cho trường "Ngày hết hạn" — trường mà QR không chứa.
 

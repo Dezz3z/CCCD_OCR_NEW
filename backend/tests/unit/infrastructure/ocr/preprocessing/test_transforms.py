@@ -100,18 +100,26 @@ class TestMrzCandidates:
 
 
 class TestUpsideDownDetection:
+    """⭐ Three-state: True, False, or None for "I cannot tell".
+
+    The abstention is what lets the engine-backed oracle vote afterwards. A
+    `False` returned out of ignorance would be indistinguishable from an
+    informed "upright" and would silence every later signal (§7.4.1).
+    """
+
     def test_upright_card_is_not_flagged(self, card_image):
-        assert transforms.is_upside_down(card_image) is False
+        assert transforms.mrz_orientation_vote(card_image) is False
 
     def test_rotated_card_is_flagged(self, card_image):
-        assert transforms.is_upside_down(cv2.rotate(card_image, cv2.ROTATE_180)) is True
+        rotated = cv2.rotate(card_image, cv2.ROTATE_180)
+        assert transforms.mrz_orientation_vote(rotated) is True
 
     def test_correction_is_idempotent(self, card_image):
         inverted = cv2.rotate(card_image, cv2.ROTATE_180)
         corrected = transforms.rotate_180(inverted)
-        assert transforms.is_upside_down(corrected) is False
+        assert transforms.mrz_orientation_vote(corrected) is False
 
-    def test_a_card_with_a_block_at_both_edges_is_left_alone(self, card_image):
+    def test_a_card_with_a_block_at_both_edges_abstains(self, card_image):
         """⭐ The real failure this guards: the address block on a CCCD back is
         also three even full-width lines, and flipping an upright card is worse
         than leaving an inverted one."""
@@ -121,17 +129,18 @@ class TestUpsideDownDetection:
         ambiguous[int(height * 0.08):int(height * 0.08) + block.shape[0]] = block
 
         assert len(transforms.find_mrz_candidates(ambiguous)) == 2
-        assert transforms.is_upside_down(ambiguous) is False
+        assert transforms.mrz_orientation_vote(ambiguous) is None
 
-    def test_a_face_without_an_mrz_is_left_alone(self):
-        """⭐ Documented gap: fronts wait for the PaddleOCR `cls` vote (module 3).
-        No signal means no rotation — a wrong flip costs more than a missed one."""
+    def test_a_face_without_an_mrz_abstains(self):
+        """⭐ Every front lands here — which is why abstaining, not returning
+        False, is what hands the decision to `PaddleOrientationOracle`."""
         front = draw_card(with_mrz=False)
-        assert transforms.is_upside_down(front) is False
-        assert transforms.is_upside_down(cv2.rotate(front, cv2.ROTATE_180)) is False
+        assert transforms.mrz_orientation_vote(front) is None
+        assert transforms.mrz_orientation_vote(cv2.rotate(front, cv2.ROTATE_180)) is None
 
-    def test_a_blank_image_is_left_alone(self):
-        assert transforms.is_upside_down(np.full((638, 1012, 3), 240, np.uint8)) is False
+    def test_a_blank_image_abstains(self):
+        blank = np.full((638, 1012, 3), 240, np.uint8)
+        assert transforms.mrz_orientation_vote(blank) is None
 
 
 class TestDeskew:

@@ -175,3 +175,60 @@ class TestQuality:
 
     def test_a_clean_capture_scores_well(self, image_set):
         assert image_set.quality.score > 0.4
+
+
+class TestOrientationOracle:
+    """⭐ How the front finally gets its 180° correction (§7.4.1 transform 4).
+
+    The MRZ signal covers backs and abstains on every front, so preprocessing
+    accepts a one-method oracle and the Composition Root supplies an
+    engine-backed one. Preprocessing itself stays usable with no models
+    installed, which is what keeps these tests engine-free.
+    """
+
+    class RecordingOracle:
+        def __init__(self, verdict):
+            self.verdict = verdict
+            self.calls = 0
+
+        def is_upside_down(self, image):
+            self.calls += 1
+            return self.verdict
+
+    def build(self, image, oracle):
+        return OpenCvPreprocessor(oracle).prepare(
+            encode(image), None, PreprocessProfile()
+        )
+
+    def test_a_front_is_rotated_when_the_oracle_says_so(self):
+        front = place_on_background(draw_card(with_mrz=False))
+        upright = self.build(front, self.RecordingOracle(False))
+        flipped = self.build(front, self.RecordingOracle(True))
+        assert np.array_equal(
+            cv2.rotate(upright.v2.array, cv2.ROTATE_180), flipped.v2.array
+        )
+
+    def test_an_abstaining_oracle_leaves_the_card_alone(self):
+        front = place_on_background(draw_card(with_mrz=False))
+        left_alone = self.build(front, self.RecordingOracle(None))
+        untouched = self.build(front, self.RecordingOracle(False))
+        assert np.array_equal(left_alone.v2.array, untouched.v2.array)
+
+    def test_the_mrz_signal_wins_and_the_oracle_is_never_asked(self):
+        """⭐ It reads the card's own geometry, was right on 19 of 19 real
+        backs, and costs ~20 ms against the oracle's ~1.1 s."""
+        oracle = self.RecordingOracle(True)
+        assert self.build(place_on_background(draw_card(with_mrz=True)), oracle).v2 is not None
+        assert oracle.calls == 0
+
+    def test_a_front_consults_the_oracle_exactly_once(self):
+        oracle = self.RecordingOracle(False)
+        image_set = self.build(place_on_background(draw_card(with_mrz=False)), oracle)
+        assert (image_set.v2, image_set.v3, image_set.v4) is not None
+        assert oracle.calls == 1
+
+    def test_no_oracle_means_no_rotation_rather_than_an_error(self):
+        front = place_on_background(draw_card(with_mrz=False))
+        assert OpenCvPreprocessor().prepare(
+            encode(front), None, PreprocessProfile()
+        ).v2 is not None

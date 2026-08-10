@@ -185,7 +185,25 @@ graph TB
 | 1 | Sửa hướng EXIF | Áp `Orientation` 1–8 đã lưu ở S1 | `preproc.exif_transpose` | Ảnh scan không có EXIF → bỏ qua, không lỗi |
 | 2 | Giới hạn kích thước | Resize cạnh dài → 1600px. `INTER_AREA` khi thu nhỏ, `INTER_CUBIC` khi phóng | `preproc.target_long_edge` | 1600px là điểm cân bằng: dưới 1200 mất chi tiết, trên 2000 chậm gấp đôi không lợi |
 | 3 | Nắn phối cảnh | Contour (dò trên bản thu nhỏ cạnh dài 800px) → lọc theo diện tích + tỉ lệ ≈1.585 → `approxPolyDP` 4 đỉnh → **đổi nhãn 4 đỉnh về khổ ngang** → `getPerspectiveTransform` → khung chuẩn 1012×638. ⭐ Không tìm được contour mà **tỉ lệ của chính khung ảnh** nằm trong dải cho phép → dùng luôn 4 góc ảnh (ảnh đã crop sát thẻ) | `preproc.perspective.*` | ⭐ Tìm nhầm contour (bàn, giấy nền) sẽ cắt sai. **Bảo vệ:** tỉ lệ ∈ [1.45, 1.72] và diện tích ≥ 25% ảnh; thất bại → `warp_succeeded=False`, chỉ khử nghiêng |
-| 4 | Phát hiện lộn ngược 180° | 3 tín hiệu bỏ phiếu: `cls` model PaddleOCR · số vùng text đọc được ở 0° vs 180° · **vị trí khối MRZ** (3 dòng full-width, cao bằng nhau, cách đều). ⭐ Chỉ xoay khi có **đúng một** khối như vậy sát mép — thẻ có khối ở cả hai mép (MRZ + khối địa chỉ) là **mơ hồ, không xoay** | `preproc.orientation.strategy` | ⭐ Xoay nhầm một thẻ vốn đã đúng tệ hơn nhiều so với bỏ sót một thẻ lộn ngược. Hai tín hiệu đầu cần engine OCR nên chỉ có từ tuần 3 |
+| 4 | Phát hiện lộn ngược 180° | ⭐ **2 tín hiệu, hỏi theo thứ tự độ chính xác** (không phải 3 tín hiệu bỏ phiếu ngang nhau): (1) **vị trí khối MRZ** — 3 dòng full-width, cao bằng nhau, cách đều; (2) **dấu vân chữ in sẵn ở dải trên** qua engine OCR. Cả hai đều **ba trạng thái**: đúng chiều / lộn ngược / **không có ý kiến** | `preproc.orientation.strategy` | ⭐ Xoay nhầm một thẻ vốn đã đúng tệ hơn nhiều so với bỏ sót một thẻ lộn ngược — nên "không có ý kiến" là kết cục an toàn và phải biểu diễn được |
+
+> ⭐ **Tín hiệu "đếm số vùng text ở 0° vs 180°" KHÔNG TỒN TẠI — đã đo và bác bỏ.** Trên 18 mặt trước thật, so cùng thẻ đúng chiều với lộn ngược:
+>
+> | | Đúng chiều | Lộn 180° |
+> |---|---|---|
+> | Số vùng đọc được | 17.7 | 15.8 |
+> | Độ tin cậy trung bình | 0.911 | 0.904 |
+> | Dòng chữ trùng với bản đúng chiều | — | 84/318 |
+>
+> Bộ phân loại góc theo dòng của PaddleOCR tự lật **từng dòng một**, nên thẻ lộn ngược vẫn cho ra một trang chữ đầy đủ và tự tin — 74% trong đó đơn giản là **sai**. Số vùng và độ tin cậy không tách được hai trạng thái đó. Thứ tách được là **nội dung chữ**: thẻ đọc đúng chiều sẽ chứa những cụm từ mà mọi CCCD đều in.
+>
+> ⚠️ **Dấu vân chữ phải là cụm từ CHỈ in ở một phần ba TRÊN của thẻ.** Dựng từ mọi cụm từ in sẵn, nó gọi **6/46** thẻ lộn ngược là đúng chiều: `Nơi thường trú` và `Có giá trị đến` nằm ở **đáy** mặt trước, nên xoay thẻ đưa chúng thẳng vào dải đang quét. Một dấu vân xuất hiện ở cả hai đầu thẻ thì không nhận dạng được gì.
+>
+> **Kết quả đo (46 thẻ, mỗi thẻ thử cả hai chiều): 44/46 đúng cả hai chiều, 0 sai, 2 bỏ phiếu trắng.** Chi phí: **một** lượt nhận dạng dải trên ở nhánh thường gặp, hai lượt chỉ khi lượt đầu không thấy gì.
+>
+> ⭐ Tín hiệu MRZ hỏi **trước** và thắng dứt điểm khi có ý kiến: nó đọc hình học của chính thẻ, đúng 19/19 mặt sau thật, và tốn ~20 ms so với ~1.1 s của engine. Engine chỉ được hỏi về những thẻ mà tín hiệu MRZ không thấy — tức là mọi mặt trước.
+>
+> ⭐ Tầng tiền xử lý phụ thuộc một **protocol một phương thức** (`IOrientationOracle`), không phụ thuộc engine. Nhờ vậy nó vẫn chạy và vẫn test được khi máy **không cài model nào**; Composition Root là nơi cắm bản hiện thực có engine.
 | 5 | Khử nghiêng | Hough Line trên cạnh ngang chủ đạo → góc trung vị → `warpAffine`. Giới hạn ±15° | `preproc.deskew.max_angle` | Xoay quá lớn làm mất góc → giới hạn góc |
 | 6 | Khử nhiễu | `bilateralFilter` (nhanh, giữ cạnh — **mặc định**) hoặc `fastNlMeansDenoisingColored` (chất lượng cao, chậm 5×) | `preproc.denoise.method` | Khử nhiễu quá tay làm mờ dấu tiếng Việt → tham số bảo thủ |
 | 7 | Cân bằng sáng | CLAHE trên kênh **L** của LAB (giữ màu) + gamma tự động theo độ sáng trung bình | `preproc.clahe.clip_limit` | `clip_limit` cao gây nhiễu hạt → mặc định 2.0 |
@@ -199,8 +217,8 @@ graph TB
 | `v0` | Ảnh gốc đã re-encode | Dự phòng cuối | Không mất thông tin |
 | `v1` | + EXIF + resize | **Kênh QR** | ⭐ QR chịu nhiễu tốt nhưng **rất nhạy với khử nhiễu** — làm mượt có thể phá cấu trúc module. Không sửa xoay ở đây: QR bất biến với hướng |
 | `v2` | v1 + nắn phối cảnh (thất bại → khử nghiêng) + sửa 180° | Cơ sở cho v3, v4 | ⭐ Sửa 180° đặt **sau** khi nắn: mọi tín hiệu về hướng chỉ có nghĩa trên thẻ đã dựng lại thành khổ ngang |
-| `v3` | v2 + khử nhiễu + CLAHE + tăng nét | **Kênh OCR văn bản** | Tối ưu cho chữ có dấu |
-| `v4` | v2 → xám → nhị phân adaptive | **Kênh MRZ** | MRZ là chữ đơn cách đen trắng — nhị phân hoá cho kết quả tốt hơn hẳn ảnh màu |
+| `v3` | v2 + khử nhiễu + CLAHE + tăng nét | **Kênh OCR văn bản** + ⭐ **kênh MRZ (ưu tiên)** | Tối ưu cho chữ có dấu; đo thật cũng thắng ở MRZ |
+| `v4` | v2 → xám → nhị phân adaptive | **Kênh MRZ (dự phòng)** | ⚠️ Giả định "nhị phân hoá tốt hơn hẳn cho MRZ" **sai với PaddleOCR** — đo trên 20 mặt sau: v4 đọc được 12, v3 đọc được 20. Giữ làm dự phòng vì vẫn thắng ở ảnh tương phản thấp |
 
 > ⭐ **Tạo lười:** biến thể chỉ dựng khi kênh tương ứng truy cập lần đầu, sau đó cache. Nếu QR đọc được ngay ở `v1`, biến thể `v3`/`v4` của mặt trước **không bao giờ được tạo**.
 > **Tiết kiệm:** ~15% RAM đỉnh (62 MB → 40 MB) và ~15% thời gian xử lý.
@@ -217,12 +235,22 @@ graph TB
 | Có vùng MRZ | **0.40** | 20% đáy ảnh, ≥3 dòng, mật độ ký tự `<` > 15% | → BACK |
 | Anchor text mặt trước | 0.15 | Fuzzy ≥80% với "CĂN CƯỚC CÔNG DÂN", "CỘNG HÒA XÃ HỘI CHỦ NGHĨA VIỆT NAM", "Số / No.", "Họ và tên / Full name" | → FRONT |
 | Anchor text mặt sau | 0.15 | Fuzzy với "Đặc điểm nhân dạng", "Ngày, tháng, năm", "CỤC TRƯỞNG", "Personal identification" | → BACK |
-| Vùng chân dung góc trái-dưới | 0.10 | Haar cascade hoặc phân tích độ phức tạp texture | → FRONT |
-| Vùng vân tay góc trái | 0.10 | Texture pattern tần số cao có hướng | → BACK |
+| ~~Vùng chân dung góc trái-dưới~~ | ~~0.10~~ | ~~Haar cascade hoặc phân tích độ phức tạp texture~~ | ⚠️ **không triển khai** |
+| ~~Vùng vân tay góc trái~~ | ~~0.10~~ | ~~Texture pattern tần số cao có hướng~~ | ⚠️ **không triển khai** |
 
-**Ngưỡng:** ≥ 0.60 chấp nhận · 0.35–0.60 cần bằng chứng thứ hai · < 0.35 → `AMBIGUOUS`.
+> ⚠️ **Hai tín hiệu texture bị bỏ, có đo đạc chống lưng.** Chúng cần Haar cascade — thêm một tệp nhị phân phải đóng gói và thêm một thứ có thể hỏng khi chạy offline. Đo trên 46 ảnh CCCD thật: bốn tín hiệu còn lại phân loại **36/36** ảnh có nhãn (16 mặt trước, 20 mặt sau) — **0 sai, 0 không có ý kiến**. Bỏ theo P-10 chứ không phải quên; nếu Golden Set cho thấy thẻ mà bốn tín hiệu không tách được thì thêm vào lúc đó.
+
+**Ngưỡng: ≥ 0.40 chấp nhận** (một tín hiệu quyết định), dưới đó → `AMBIGUOUS`.
+
+> ⭐ **Ngưỡng được suy lại, không chép nguyên.** Bản D2.0 ghép ngưỡng 0.60 với sáu tín hiệu tổng 0.65 mỗi mặt — tức 0.60 đòi **cả ba** tín hiệu của một mặt cùng bật. Bỏ hai tín hiệu texture thì điểm tối đa tụt còn **0.55**, và một cổng 0.60 sẽ khiến **mọi** thẻ ra `AMBIGUOUS`. Ngưỡng phải mô tả đúng tập bằng chứng thực có. Chọn 0.40 vì cả hai tín hiệu quyết định đều mang tính kết luận theo bản chất: QR của CCCD **chỉ** in ở mặt trước, MRZ **chỉ** ở mặt sau — không cái nào xuất hiện nhầm mặt được.
 
 **Bốn kết cục:** đúng thứ tự → tiếp tục · ngược thứ tự → tự hoán đổi + cờ `auto_swapped` · trùng mặt → `DUPLICATE_SIDE` chặn · không rõ → `AMBIGUOUS`, cho người dùng gán tay.
+
+⭐ **Ảnh không có bằng chứng nào phải trả về "không có ý kiến", không phải "mặt trước".** Một ảnh 0 điểm và một ảnh 0.40 điểm mặt sau vẫn phải ra `RESOLVED` — mặt còn lại suy ra bằng loại trừ. Nếu để hoà điểm mặc định thành FRONT thì hai ảnh sẽ "cùng mặt" và ra `AMBIGUOUS` sai. Bất biến của Port (`không bao giờ RESOLVED khi **cả hai** ảnh dưới ngưỡng`) nói về *cả hai*, nên một ảnh chắc chắn là đủ.
+
+⭐ **Đọc dải tiêu đề chạy lười.** Nó tốn 41% một lượt nhận dạng toàn thẻ (§7.4.5). Đo trên 46 ảnh: QR hoặc khối MRZ đã chốt 36 ảnh, và trên 36 ảnh đó anchor **chưa từng đổi kết luận**. Nên chỉ nhận dạng dải tiêu đề khi hai tín hiệu quyết định để lại thế hoà.
+
+⭐ **Khối MRZ dò bằng hình học thuần OpenCV** (`find_mrz_candidates`, ~20 ms), không cần đọc chữ. Bản thân nó không phân biệt được MRZ với khối địa chỉ, nên có thêm chốt vị trí: chỉ tính khối có tâm ở dưới 0.55 chiều cao thẻ (MRZ thật đo được tâm ~0.79).
 
 ---
 
@@ -277,16 +305,38 @@ graph TB
 
 | Bước | Nội dung |
 |---|---|
-| 1. Định vị | Quét 20% đáy `v4`, tìm dải ngang có mật độ ký tự `<` cao. Nếu `warp_succeeded` → dùng thẳng toạ độ cố định từ `zone_map` |
-| 2. Đọc | Gọi `recognize_region()` trên biến thể `v4` (nhị phân) |
+| 1. Định vị | ⭐ Dải rộng **y 0.62–0.98** (`zone_map`, đã hiệu chỉnh — cũ là 0.82–0.98, nằm **dưới** hai dòng đầu và đọc trúng khối địa chỉ). Dải để rộng có chủ đích: việc quyết định đâu là MRZ do bước 5 làm, không phải toạ độ |
+| 2. Đọc | ⭐ `recognize_region()` trên **`v3` trước, `v4` dự phòng** — xem cảnh báo bên dưới |
 | 3. ⭐ **Ánh xạ cưỡng bức hậu xử lý** | PaddleOCR **không hỗ trợ giới hạn bộ ký tự lúc giải mã** — mọi ký tự ngoài `[A-Z0-9<]` được ánh xạ về ký tự gần nhất theo bảng nhầm lẫn hình dạng: `O,o,Q,D→0` · `I,l,\|→1` · `S,s→5` · `B→8` · `Z,z→2` · `G→6` · `T→7` · `A→4` · `«,‹→<` · chữ thường→hoa · không ánh xạ được → `<` |
 | 4. Chuẩn hoá cấu trúc | Ép mỗi dòng về đúng 30 ký tự (đệm/cắt `<`); ghép 3 dòng |
-| 5. Phân tích TD1 | Dòng 1: loại tài liệu + `VNM` + số tài liệu + check digit. Dòng 2: ngày sinh + check + giới tính + **ngày hết hạn** + check + check tổng. Dòng 3: họ tên (không dấu) |
-| 6. **Xác thực checksum** | Thuật toán trọng số 7-3-1 của ICAO cho từng nhóm và toàn khối |
-| 7. Sửa lỗi có kiểm soát | Nếu checksum sai, thử hoán vị nhầm lẫn phổ biến — ⭐ **tối đa 3 vị trí** (nâng từ 2 để bù việc mất ràng buộc giải mã) |
-| 8. Chấm điểm | Đúng ngay → 0.98 · đúng sau sửa → 0.90 · không bao giờ đúng → 0.50 + cờ `MRZ_CHECKSUM_FAILED` |
+| 5. ⭐ **Nhận dạng dòng theo cấu trúc** | Gán mỗi dòng đọc được vào ô 1/2/3 bằng **cấu trúc**, không bằng thứ tự tìm thấy — xem cảnh báo bên dưới. Thiếu cả dòng 1 lẫn dòng 2 → báo không đọc được, **không đoán** |
+| 6. ⭐ **Nắn đuôi dòng** | Đưa số kiểm bị chuỗi `<` nuốt mất về đúng cột — nguyên nhân sai checksum lớn nhất trên thẻ thật |
+| 7. Phân tích TD1 | Dòng 1: loại tài liệu + `VNM` + số tài liệu + check digit. Dòng 2: ngày sinh + check + giới tính + **ngày hết hạn** + check + check tổng. Dòng 3: họ tên (không dấu) |
+| 8. **Xác thực checksum** | ⭐ **4 số kiểm nhóm là cổng chặn; số kiểm tổng là điểm thưởng** — xem cảnh báo bên dưới |
+| 9. Sửa lỗi có kiểm soát | Nếu checksum sai, thử hoán vị nhầm lẫn phổ biến — ⭐ **tối đa 3 vị trí**. ⚠️ Khối **đã sửa** chỉ được tin khi số kiểm tổng cũng khớp |
+| 10. Chấm điểm | Sạch (đủ 5 số kiểm, 0 lần sửa) → 0.98 · sửa được **hoặc** mất số kiểm tổng → 0.90 · không bao giờ đúng → 0.50 + cờ `MRZ_CHECKSUM_FAILED` |
+| 11. ⭐ **Chặn hình dạng giá trị** | Số CCCD phải đúng 12 chữ số, ngày phải là ngày thật — khối hỏng vẫn tới hợp nhất ở mức 0.50 nên giá trị dị dạng phải bị loại **tại đây** |
 
-> ⭐ **Chỉ tiêu: MRZ checksum hợp lệ ≥ 75%** (đã điều chỉnh từ 85% sau khi xác định PaddleOCR không hỗ trợ charset whitelist). **Cần kiểm chứng bằng Golden Set ngay ở P2 tuần 2** — nếu thấp hơn, phải điều chỉnh chiến lược trước khi đi tiếp.
+> ⭐ **CHỈ TIÊU ≥75% ĐÃ ĐẠT: đo được 22/22 = 100%** trên ảnh thật (2026-08-10), với `repairs applied {0: 22}` — bộ sửa lỗi có giới hạn **chưa từng phải chạy**. 2/2 ảnh có cả hai kênh cho số CCCD **khớp nhau**. Mẫu chưa gán nhãn nên vẫn cần Golden Set xác nhận, nhưng checkpoint #3 của roadmap không còn là rủi ro mở.
+>
+> Cần **cả hai** thay đổi mới đạt — không cái nào một mình đủ:
+>
+> | Cách tính | Tỉ lệ |
+> |---|---|
+> | Cả 5 số kiểm, không nắn đuôi *(thiết kế gốc)* | 8/22 = **36%** |
+> | Cả 5 số kiểm + nắn đuôi | 14/22 = 64% |
+> | 4 số kiểm nhóm, không nắn đuôi | 16/22 = 73% |
+> | **4 số kiểm nhóm + nắn đuôi** | **22/22 = 100%** |
+
+> ⭐ **`v3` đọc MRZ tốt hơn `v4`.** Thiết kế chỉ định `v4` (nhị phân) là biến thể *của* kênh MRZ, lập luận rằng MRZ là chữ đơn cách đen trắng. Đo trên 20 mặt sau thật: nhị phân hoá adaptive làm mảnh nét chữ và **mất hẳn 8/20 khối** (12 so với 20). Giữ `v4` làm dự phòng vì nó vẫn thắng ở ảnh tương phản thấp; thử `v3` trước, dừng ở khối đầu tiên qua checksum.
+
+> ⭐ **Ô dòng quyết định bằng cấu trúc, KHÔNG bằng vị trí hay thứ tự.** Nhận dạng thường xuyên bỏ sót một trong ba dòng. Giả định "dòng tìm thấy đầu tiên là dòng 1" chính là thứ biến một dòng bị sót thành sáu giá trị sai đầy tự tin: dòng họ tên rơi vào ô của dòng 1, rồi các chữ cái của nó bị **ép thành chữ số** và ra một số CCCD. Đây là điều đã quan sát được trên ảnh thật (`TRAN<<7H1<7HUY<0U0N61Y` nằm ở ô dòng 1). Nhận dạng: dòng 1 mở đầu `I`/`1` + dải chữ số dài; dòng 2 = YYMMDD + số kiểm + ký tự giới tính + YYMMDD; dòng 3 = gần như không có chữ số.
+>
+> ⚠️ Ô giới tính kiểm theo "**không phải chữ số**" chứ không phải "thuộc `M`/`F`/`<`" — một thẻ thật trả về `E` ở đó, và loại cả dòng vì một glyph đọc sai sẽ vứt luôn hai trường ngày nằm hai bên nó.
+
+> ⭐ **Số kiểm tổng là NHÂN CHỨNG, không phải cổng chặn.** Nó nằm cuối một chuỗi 11 ký tự `<` — đúng cột mà bộ nhận dạng hay đếm sai nhất — nên bắt buộc nó khớp là loại bỏ dữ liệu đúng (36% so với 73%). Bốn số kiểm nhóm đã xác thực **độc lập từng trường** mà MRZ đóng góp. Nhưng khi `_repair` được phép thay chữ số thì bốn số kiểm nhóm **không còn là cổng an toàn** — với 3 lần thay mỗi nhóm nó thoả được gần như mọi số kiểm, và một khối nhiễu thuần sẽ ra "hợp lệ". Vậy nên: **khối đã sửa chỉ được tin khi số kiểm tổng đồng ý**; khối sạch không cần.
+>
+> ⚠️ **Số kiểm tổng KHÔNG làm chứng cho nhóm số tài liệu ở dòng 1.** Cả hai tổng đều bắt đầu tại `line1[5]` trên **cùng pha trọng số 7-3-1**, và nhóm đó dài đúng 9 ký tự — ba chu kỳ trọn vẹn — nên mọi cột phía sau giữ nguyên pha. Mọi sửa lỗi thoả số kiểm của nhóm đó cũng để số kiểm tổng y nguyên. Điều này **không đúng** với ba nhóm còn lại (pha lệch một vị trí), và ba nhóm đó mới là những nhóm đưa trường vào hợp nhất — `_to_fields` không bao giờ xuất số tài liệu.
 
 > **Vì sao MRZ đáng công sức này:** nó là **nguồn duy nhất ngoài OCR** cho trường "Ngày hết hạn" — trường QR không chứa. Không có MRZ, ngày hết hạn phụ thuộc hoàn toàn OCR với độ chính xác ~88%. Có MRZ, con số đó lên 95%+.
 
@@ -296,32 +346,61 @@ graph TB
 
 | Mục | Thiết kế |
 |---|---|
-| Model | PP-OCRv4: `det` (phát hiện vùng) + `rec` (nhận dạng, `lang='vi'`) + `cls` (phân loại góc 0/180) |
-| Đóng gói | ⭐ Model tải sẵn vào `app/ocr-models/`, **không bao giờ tải từ mạng lúc chạy** (P-01). Adapter **phải** chỉ định `det_model_dir`, `rec_model_dir`, `cls_model_dir` tường minh |
+| Model | ⭐ **PP-OCRv3**, không phải v4 — xem khối cảnh báo bên dưới. `det` (phát hiện vùng) + `rec` (nhận dạng) + `cls` (phân loại góc 0/180) |
+| Đóng gói | ⭐ Model tải sẵn vào `resources/ocr-models/` bằng `scripts/fetch_ocr_models.py` (bước dựng, chạy một lần), **không bao giờ tải từ mạng lúc chạy** (P-01). Adapter **phải** chỉ định `det_model_dir`, `rec_model_dir`, `cls_model_dir`, `rec_char_dict_path` tường minh; thiếu tệp model → ném lỗi, **không bao giờ tải về** |
 | Vòng đời | **Singleton**, nạp ở **luồng nền sau khi UI hiện** qua `warm_up()`. Chiếm ~150 MB RAM thường trú |
-| Luồng | ⭐ Chạy trong `run_in_executor` (thread pool) — PaddleOCR là **CPU-bound và blocking**; gọi thẳng sẽ chặn event loop và treo toàn bộ API (ADR-06) |
+| Luồng | ⭐ Chạy trong `run_in_executor` (thread pool) — PaddleOCR là **CPU-bound và blocking**; gọi thẳng sẽ chặn event loop và treo toàn bộ API (ADR-06). Adapter tự khoá nội bộ nên an toàn khi gọi từ thread pool |
 | Giới hạn CPU | `ocr.cpu_threads` cấu hình được (mặc định = số nhân / 2) để không chiếm hết máy |
-| Chuẩn hoá đầu ra | `bbox` pixel → tương đối (0..1). Text → Unicode **NFC**. Sắp xếp vùng theo thứ tự đọc (trên→dưới, trái→phải) |
+| Chuẩn hoá đầu ra | `bbox` pixel → tương đối (0..1). Text → Unicode **NFC**. Sắp xếp vùng theo thứ tự đọc — ⭐ gom dòng theo chiều cao trung vị **rồi** mới sắp trái→phải; sắp theo `y` đơn thuần sẽ đảo lộn mọi thẻ có hai trường cùng dòng (`Giới tính` + `Quốc tịch`) |
 | Xử lý lỗi | Model không nạp được → `warm_up()` ném `OcrEngineUnavailableError`, health check báo `DEGRADED`, hệ thống **vẫn dùng được ở chế độ nhập tay** (P-08) |
-| ⚠️ Giới hạn kỹ thuật | **Không hỗ trợ charset whitelist lúc giải mã** — `charset_hint` chỉ dùng làm gợi ý cho bộ lọc hậu xử lý |
+| ⚠️ Hết giờ | `OcrTimeoutError` là **kiểm tra ngân sách sau khi chạy xong**, không phải huỷ giữa chừng: PaddleOCR không có móc ngắt, và giết thread giữa lúc suy luận sẽ hỏng trạng thái predictor dùng chung cho mọi lời gọi sau |
+| ⚠️ Giới hạn kỹ thuật | **Không hỗ trợ charset whitelist lúc giải mã** — `charset_hint` chỉ là gợi ý hậu xử lý |
+
+> ⭐ **`charset_hint` KHÔNG được xoá ký tự.** Cách hiểu hiển nhiên của "bộ lọc hậu xử lý" là loại bỏ ký tự ngoài tập cho phép, và nó sai. Mọi bên gọi đều làm **số học theo vị trí** trên kết quả — `Td1MrzReader` đọc số CCCD ở cột 15–26 của dòng 1. Xoá một ký tự bị nhận nhầm sẽ đẩy lệch mọi trường phía sau và cho ra **sáu giá trị sai đầy tự tin**; ánh xạ nó về ký tự đệm (việc mà bảng của chính kênh đó đã làm) chỉ hỏng đúng trường chứa nó. Với chỉ tiêu False Confidence ≤ 0.5% thì đây không phải lựa chọn khó. Adapter chỉ làm một việc an toàn ở tầng này: **chuyển hoa** khi tập cho phép không có chữ thường.
+
+> ⭐ **`lang='vi'` KHÔNG cho model tiếng Việt.** Truy vết trong `paddleocr 2.9.1` rồi đối chiếu với CDN, không phải suy đoán:
+>
+> | Xin | Thực nhận | Vì sao |
+> |---|---|---|
+> | `det`, `lang='vi'` | `en_PP-OCRv3_det` | `parse_lang` đẩy mọi ngôn ngữ hệ Latin về `det_lang='en'` |
+> | `rec`, `lang='vi'` | `latin_PP-OCRv3_rec` | ⭐ Mục `latin` trong bảng **v4** trỏ tới một URL **v3** |
+> | `cls` | `ch_ppocr_mobile_v2.0_cls` | không phụ thuộc ngôn ngữ |
+>
+> **Hệ quả đo được:** `latin_dict.txt` (185 ký tự) — bảng chữ mà `lang='vi'` thật sự dùng — chỉ phủ **4/42** chữ hoa có dấu tiếng Việt. `vi_dict.txt` (113 ký tự) phủ **42/42** nhưng **không bao giờ được chọn**, và không có model nào khớp với nó: `vi_PP-OCRv3_rec_infer.tar` trả **HTTP 404**.
+>
+> Nghĩa là lớp phân loại của bộ nhận dạng **không có đầu ra** cho `Ả Ấ Ầ Ă Ế Ộ Ơ Ư Ỳ …`. Tên trên CCCD in hoa có dấu, nên trường `FULL_NAME` từ kênh OCR về **mất dấu chứ không sai chữ** — đúng kiểu hỏng mà hợp nhất xử lý được: kênh QR (trọng số nguồn 1.00) mang tên có dấu bất cứ khi nào giải mã được, và người dùng sửa một cái tên thiếu dấu nhẹ hơn nhiều so với gõ lại từ đầu.
+>
+> ⭐ Bộ nhận dạng còn thể hiện dấu móc thành dấu nháy đơn (`CĂN CƯỚC` → `CAN CU'O'C`), nên mọi so khớp phải bỏ dấu nháy — xem §7.4.6.
+
+**⭐ Kiểm chứng P-01 (đã chạy thật):** cắt toàn bộ lời gọi kết nối socket của tiến trình rồi chạy `warm_up()` + `recognize()` — cả hai thành công, **0 lần thử gọi mạng**, không tạo thư mục cache `~/.paddleocr`. Giữ làm test hồi quy trong `tests/security/test_ocr_offline.py` (marker `security`), cùng nhóm với test `grep` PII trong log.
+
+**Chi phí đo thật** (thẻ 1012×638, 2 luồng CPU): `recognize()` toàn thẻ **2741 ms**; `recognize_region()` dải trên 32% **1128 ms** (41%), dải MRZ **1231 ms** (45%). ⚠️ Chi phí **không tỉ lệ với diện tích** — bộ dò của PaddleOCR chuẩn hoá theo cạnh dài, mà một dải full-width có cùng cạnh dài với cả thẻ. Hệ quả thiết kế: quy trình nên **nhận dạng toàn thẻ một lần rồi dùng lại các vùng**, thay vì gọi nhiều lần theo dải.
 
 ---
 
 ### 7.4.6. `ZoneAndAnchorExtractor`
 
-**Chiến lược ZONE** (khi `warp_succeeded=True`) — bản đồ vùng lưu trong `document_type.zone_map` cho khung chuẩn 1012×638:
+**Chiến lược ZONE** (khi `warp_succeeded=True`) — bản đồ vùng lưu trong `document_type.zone_map` cho khung chuẩn 1012×638.
 
-| Trường | Vùng tương đối (x, y, w, h) | Mặt |
-|---|---|---|
-| `id_number` | (0.38, 0.27, 0.58, 0.11) | FRONT |
-| `full_name` | (0.38, 0.39, 0.61, 0.10) | FRONT |
-| `date_of_birth` | (0.38, 0.50, 0.35, 0.08) | FRONT |
-| `expiry_date` | (0.38, 0.80, 0.35, 0.08) | FRONT |
-| `issue_place` | (0.05, 0.60, 0.90, 0.12) | BACK |
-| `issue_date` | (0.05, 0.73, 0.60, 0.08) | BACK |
-| `mrz` | (0.02, 0.82, 0.96, 0.16) | BACK |
+⭐ **ĐÃ HIỆU CHỈNH BẰNG ẢNH THẬT 2026-08-10.** Cách đo: chạy pipeline trên ảnh mẫu, lấy payload QR (mặt trước) và khối MRZ hợp lệ checksum (mặt sau) làm chân lý, rồi ghi lại hộp bao của vùng chứa từng giá trị đã biết. Không toạ độ nào chọn bằng mắt.
 
-> ⚠️ **Toạ độ trên là giá trị khởi tạo — PHẢI hiệu chỉnh bằng ảnh thật ở giai đoạn P2.** Lưu trong CSDL để tinh chỉnh mà không rebuild.
+| Trường | Vùng (x, y, w, h) | Mặt | y đo được | n | Giá trị cũ (sai) |
+|---|---|---|---|---|---|
+| `id_number` | (0.26, 0.37, 0.54, 0.15) | FRONT | 0.40–0.43 | 15 | y 0.14 |
+| `full_name` | (0.26, 0.51, 0.55, 0.14) | FRONT | 0.54–0.57 | 15 | y 0.28 |
+| `date_of_birth` | (0.28, 0.58, 0.53, 0.13) | FRONT | 0.61–0.63 | 12 | y 0.40 |
+| `expiry_date` | (0.00, 0.85, 0.40, 0.14) | FRONT | 0.88–0.93 | 9 | y 0.78 |
+| `issue_date` | (0.00, 0.08, 0.57, 0.17) | BACK | 0.11–0.15 | 14 | y 0.78 |
+| `issue_place` | (0.13, 0.13, 0.44, 0.16) | BACK | 0.16–0.20 | 20 | y 0.62 |
+| `mrz` | (0.02, 0.62, 0.96, 0.36) | BACK | 0.66–0.93 | 20 | y 0.82 |
+
+> ⚠️ **Bộ toạ độ cũ lệch khoảng 0.2 theo trục y ở MỌI trường mặt trước** — lớn hơn chiều cao một trường. Hậu quả không hề tinh vi: ô `full_name` trỏ đúng vào dòng phụ đề `Citizen Identity Card` và giao nó cho hợp nhất **như tên khách hàng**. Hai trường mặt sau bị đặt ở đáy thẻ, trong khi trên CCCD gắn chip thật thì ngày cấp và cơ quan cấp in ở **phía trên**, bên trên vùng vân tay.
+>
+> Đo được sau khi sửa: `id_number` **14/14**, `date_of_birth` **12/12**, `full_name` 6/15 → **11/15**.
+
+> ⭐ **Chặn theo nội dung, không chỉ theo vị trí.** Ngoài toạ độ, bộ trích còn từ chối mọi chuỗi khớp với **danh sách chữ in sẵn trên mọi thẻ** (`CĂN CƯỚC CÔNG DÂN`, `Citizen Identity Card`, `CỘNG HÒA…`, `Nơi thường trú`, …). Đây là lớp phòng thủ độc lập với độ chính xác của `zone_map`: ô lệch một dòng vẫn không sinh ra được giá trị sai. ⚠️ Cơ quan cấp (`CỤC TRƯỞNG CỤC CẢNH SÁT…`) **cố ý không nằm trong danh sách** — mọi thẻ đều in nó, nhưng trên CCCD nó **chính là** giá trị `issue_place`.
+
+⚠️ Vẫn lưu trong CSDL để tinh chỉnh mà không rebuild — nhưng giờ là **số đo**, không còn là chỗ giữ chỗ.
 
 **Chiến lược ANCHOR** (dự phòng khi không nắn được phối cảnh):
 
@@ -332,9 +411,22 @@ graph TB
 | `date_of_birth` | "Ngày sinh", "Date of birth" | Mẫu `\d{2}/\d{2}/\d{4}` gần nhất |
 | `expiry_date` | "Có giá trị đến", "Date of expiry" | Mẫu ngày **hoặc** chuỗi khớp "KHÔNG THỜI HẠN" |
 | `issue_date` | "Ngày, tháng, năm", "Date, month, year" | Mẫu ngày ở nửa dưới mặt sau |
-| `issue_place` | *(không có nhãn cố định)* | ⭐ Vùng in hoa nằm **phía trên** dòng ngày cấp; hoặc dòng dài nhất khớp fuzzy với 1 trong 2 giá trị chuẩn |
+| `issue_place` | ⭐ *(không có nhãn — chính cơ quan cấp là giá trị)* | Khớp fuzzy với `CỤC TRƯỞNG CỤC CẢNH SÁT…` / `BỘ CÔNG AN`; `IssuePlaceNormalizer` chuẩn hoá tiếp |
 
-⭐ **Xử lý tiếng Việt bắt buộc:** mọi so khớp fuzzy thực hiện trên chuỗi đã **bỏ dấu** (NFD → lọc ký tự kết hợp) và **UPPERCASE**, để "CUC CANH SAT" khớp được "CỤC CẢNH SÁT". Không làm bước này, tỉ lệ khớp anchor giảm khoảng một nửa.
+⚠️ **`expiry_date` in ở MẶT TRƯỚC**, không phải mặt sau như bảng `anchor_patterns` bản đầu — `Có giá trị đến / Date of expiry` là dòng cuối của mặt trước (y ≈ 0.89).
+
+⚠️ **Anchor `Số` (2 ký tự) phải viết đủ thành `Số / No.`** — chuỗi 2 ký tự khớp `SOCIALIST REPUBLIC` ở mức 100 điểm.
+
+⭐ **Xử lý tiếng Việt bắt buộc:** mọi so khớp fuzzy thực hiện trên chuỗi đã **bỏ dấu** (NFD → lọc ký tự kết hợp) và **UPPERCASE**. Thêm hai bước nữa, cả hai đều rút ra từ đầu ra thật của bộ nhận dạng:
+
+1. ⭐ **Bỏ dấu nháy đơn.** Model latin thể hiện dấu móc bằng nháy đơn: `CĂN CƯỚC` → `CAN CU'O'C`. Không bỏ thì mọi từ mang ơ/ư lệch 2 ký tự.
+2. ⭐ **Bỏ hẳn khoảng trắng.** Ranh giới từ không phải bằng chứng — thẻ thật cho ra `CONG HOAXAHOI CHU NGHIAVIET NAM`, `SOCIALISTREPUBLIC OFVIETNAM`, `DANGDUY NGHIA`. Chấm điểm chúng với anchor viết đúng cách mất khoảng **18 điểm**, đủ đẩy chính tiêu đề của thẻ xuống dưới ngưỡng.
+
+⭐ **Điểm khớp phải nhân với độ phủ độ dài — bắt buộc, không phải tuỳ chọn.** `partial_ratio` chấm theo **chuỗi con khớp nhất**, nên một mảnh vụn ngắn hơn anchor sẽ khớp tuyệt đối bất cứ khi nào anchor tình cờ chứa nó. Thẻ thật sinh ra mảnh 2 ký tự `ON`, đạt **100 điểm** với `CỘNG HÒA XÃ HỘI CHỦ NGHĨA VIỆT NAM` — đủ để thuyết phục khâu kiểm hướng rằng **6 thẻ lộn ngược** đang đúng chiều. Nhân với `min(1, len(text)/len(anchor))` chặn nó ở 2/34 điểm.
+
+⭐ **Chiến lược ANCHOR đạt độ chính xác NGANG BẰNG ZONE trên ảnh thật** — 83 giá trị so với 84, và cùng tỉ lệ đúng ở cả 3 trường có chân lý (14/14 · 11/15 · 12/12). Ảnh không nắn được phối cảnh gần như **không mất gì**.
+
+⭐ **`id_number` tìm theo chiều cao chữ, không cần nhãn.** Trên CCCD không gì in to bằng số thẻ, nên chiều cao vùng đủ để nhận ra nó ngay cả khi `Số / No.` không được đọc ra — đo được 14/14 kể cả khi bỏ hẳn vùng nhãn.
 
 ---
 

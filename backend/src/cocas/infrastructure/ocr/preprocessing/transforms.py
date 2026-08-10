@@ -15,6 +15,7 @@ import numpy as np
 
 from cocas.domain.ports.ocr import ImageQuality
 
+from .cv_types import PointArray, WarpMatrix, as_bgr, as_gray, as_matrix, as_points
 from .image_data import BgrArray
 
 # --- Transform 3: perspective warp -------------------------------------------
@@ -65,19 +66,19 @@ def apply_exif_orientation(image: BgrArray, orientation: int | None) -> BgrArray
     if orientation is None or orientation == 1:
         return image
     if orientation == 2:
-        return cv2.flip(image, 1)
+        return as_bgr(cv2.flip(image, 1))
     if orientation == 3:
-        return cv2.rotate(image, cv2.ROTATE_180)
+        return as_bgr(cv2.rotate(image, cv2.ROTATE_180))
     if orientation == 4:
-        return cv2.flip(image, 0)
+        return as_bgr(cv2.flip(image, 0))
     if orientation == 5:
-        return cv2.rotate(cv2.flip(image, 1), cv2.ROTATE_90_COUNTERCLOCKWISE)
+        return as_bgr(cv2.rotate(cv2.flip(image, 1), cv2.ROTATE_90_COUNTERCLOCKWISE))
     if orientation == 6:
-        return cv2.rotate(image, cv2.ROTATE_90_CLOCKWISE)
+        return as_bgr(cv2.rotate(image, cv2.ROTATE_90_CLOCKWISE))
     if orientation == 7:
-        return cv2.rotate(cv2.flip(image, 1), cv2.ROTATE_90_CLOCKWISE)
+        return as_bgr(cv2.rotate(cv2.flip(image, 1), cv2.ROTATE_90_CLOCKWISE))
     if orientation == 8:
-        return cv2.rotate(image, cv2.ROTATE_90_COUNTERCLOCKWISE)
+        return as_bgr(cv2.rotate(image, cv2.ROTATE_90_COUNTERCLOCKWISE))
     return image
 
 
@@ -90,11 +91,10 @@ def limit_long_edge(image: BgrArray, target_long_edge: int) -> BgrArray:
     scale = target_long_edge / long_edge
     interpolation = cv2.INTER_AREA if scale < 1 else cv2.INTER_CUBIC
     new_size = (max(1, round(width * scale)), max(1, round(height * scale)))
-    resized: BgrArray = cv2.resize(image, new_size, interpolation=interpolation)
-    return resized
+    return as_bgr(cv2.resize(image, new_size, interpolation=interpolation))
 
 
-def _order_quad(points: np.ndarray) -> np.ndarray:
+def _order_quad(points: PointArray) -> PointArray:
     """Order 4 points as top-left, top-right, bottom-right, bottom-left."""
     coordinate_sum = points.sum(axis=1)
     coordinate_diff = np.diff(points, axis=1).ravel()
@@ -109,7 +109,7 @@ def _order_quad(points: np.ndarray) -> np.ndarray:
     )
 
 
-def _quad_aspect(quad: np.ndarray) -> float:
+def _quad_aspect(quad: PointArray) -> float:
     top_left, top_right, bottom_right, bottom_left = quad
     width = (
         float(np.linalg.norm(top_right - top_left))
@@ -124,7 +124,7 @@ def _quad_aspect(quad: np.ndarray) -> float:
     return width / height
 
 
-def _as_landscape(quad: np.ndarray) -> np.ndarray:
+def _as_landscape(quad: PointArray) -> PointArray:
     """Re-label the corners so the card's LONG edge becomes the top edge.
 
     Cards are routinely photographed sideways; without this the aspect guard
@@ -136,7 +136,7 @@ def _as_landscape(quad: np.ndarray) -> np.ndarray:
     return np.roll(quad, -1, axis=0)
 
 
-def find_card_quad(image: BgrArray) -> np.ndarray | None:
+def find_card_quad(image: BgrArray) -> PointArray | None:
     """Locate the card's 4 corners, or None when no candidate passes the guards.
 
     ⭐ The aspect and area guards are what stop a table edge or the sheet of
@@ -164,11 +164,11 @@ def find_card_quad(image: BgrArray) -> np.ndarray | None:
             continue
         quad = _as_landscape(_order_quad(approximation.reshape(4, 2).astype(np.float32)))
         if CARD_ASPECT_MIN <= _quad_aspect(quad) <= CARD_ASPECT_MAX:
-            return quad / scale
+            return as_points(quad / scale)
     return None
 
 
-def full_frame_quad(image: BgrArray) -> np.ndarray | None:
+def full_frame_quad(image: BgrArray) -> PointArray | None:
     """The image's own corners, when the image IS the card (already cropped).
 
     Uploads cropped tight to the card have no outline for `find_card_quad` to
@@ -186,7 +186,7 @@ def full_frame_quad(image: BgrArray) -> np.ndarray | None:
     return quad
 
 
-def warp_to_card_frame(image: BgrArray, quad: np.ndarray) -> tuple[BgrArray, np.ndarray]:
+def warp_to_card_frame(image: BgrArray, quad: PointArray) -> tuple[BgrArray, WarpMatrix]:
     """Transform 3 — rectify `quad` onto the canonical 1012x638 frame."""
     destination = np.array(
         [
@@ -197,10 +197,8 @@ def warp_to_card_frame(image: BgrArray, quad: np.ndarray) -> tuple[BgrArray, np.
         ],
         dtype=np.float32,
     )
-    matrix = cv2.getPerspectiveTransform(quad, destination)
-    warped: BgrArray = cv2.warpPerspective(
-        image, matrix, (CARD_FRAME_WIDTH, CARD_FRAME_HEIGHT)
-    )
+    matrix = as_matrix(cv2.getPerspectiveTransform(quad, destination))
+    warped = as_bgr(cv2.warpPerspective(image, matrix, (CARD_FRAME_WIDTH, CARD_FRAME_HEIGHT)))
     return warped, matrix
 
 
@@ -259,17 +257,17 @@ def find_mrz_candidates(image: BgrArray) -> list[float]:
     return candidates
 
 
-def is_upside_down(image: BgrArray) -> bool:
-    """Transform 4 — decide whether the (already rectified) card is rotated 180°.
+def mrz_orientation_vote(image: BgrArray) -> bool | None:
+    """Transform 4, MRZ signal — True if upside down, False if upright, None if unsure.
 
-    ⭐ Acts only on an UNAMBIGUOUS MRZ: exactly one three-line block hugging
+    ⭐ Votes only on an UNAMBIGUOUS MRZ: exactly one three-line block hugging
     one edge of the card. A back showing such a block at both edges (its MRZ
-    and its address block) is left alone — flipping a correctly-oriented card
-    is a far worse outcome than leaving an inverted one for the OCR engine.
+    and its address block) abstains — flipping a correctly-oriented card is a
+    far worse outcome than leaving an inverted one for the next signal.
 
-    Only the MRZ signal of §7.4.1 exists before the engine adapter, so fronts
-    are never rotated here; the PaddleOCR `cls` vote and the
-    text-count-at-0°-vs-180° vote join in with the engine.
+    ⭐ Three-state on purpose. Returning False for "no MRZ found" would silence
+    every other signal on every front, which is precisely the case the engine's
+    vote exists to cover.
     """
     at_edges = [
         centre
@@ -277,13 +275,12 @@ def is_upside_down(image: BgrArray) -> bool:
         if centre < MRZ_EDGE_ZONE or centre > 1.0 - MRZ_EDGE_ZONE
     ]
     if len(at_edges) != 1:
-        return False
+        return None
     return at_edges[0] < 0.5
 
 
 def rotate_180(image: BgrArray) -> BgrArray:
-    rotated: BgrArray = cv2.rotate(image, cv2.ROTATE_180)
-    return rotated
+    return as_bgr(cv2.rotate(image, cv2.ROTATE_180))
 
 
 def estimate_skew_angle(image: BgrArray, max_angle: float = DESKEW_MAX_ANGLE) -> float:
@@ -312,8 +309,10 @@ def deskew(image: BgrArray, max_angle: float = DESKEW_MAX_ANGLE) -> tuple[BgrArr
         return image, 0.0
     height, width = image.shape[:2]
     matrix = cv2.getRotationMatrix2D((width / 2, height / 2), angle, 1.0)
-    rotated: BgrArray = cv2.warpAffine(
-        image, matrix, (width, height), flags=cv2.INTER_CUBIC, borderMode=cv2.BORDER_REPLICATE
+    rotated = as_bgr(
+        cv2.warpAffine(
+            image, matrix, (width, height), flags=cv2.INTER_CUBIC, borderMode=cv2.BORDER_REPLICATE
+        )
     )
     return rotated, angle
 
@@ -325,18 +324,18 @@ def denoise(image: BgrArray, method: str) -> BgrArray:
     than the noise it removes.
     """
     if method == "nlmeans":
-        cleaned: BgrArray = cv2.fastNlMeansDenoisingColored(image, None, 5, 5, 7, 21)
-        return cleaned
-    filtered: BgrArray = cv2.bilateralFilter(image, 7, 50, 50)
-    return filtered
+        return as_bgr(cv2.fastNlMeansDenoisingColored(image, None, 5, 5, 7, 21))
+    return as_bgr(cv2.bilateralFilter(image, 7, 50, 50))
 
 
 def equalize_lighting(image: BgrArray, clip_limit: float = CLAHE_CLIP_LIMIT) -> BgrArray:
     """Transform 7 — CLAHE on the L channel of LAB, then automatic gamma."""
     lightness, green_red, blue_yellow = cv2.split(cv2.cvtColor(image, cv2.COLOR_BGR2LAB))
     clahe = cv2.createCLAHE(clipLimit=clip_limit, tileGridSize=(8, 8))
-    balanced = cv2.cvtColor(
-        cv2.merge((clahe.apply(lightness), green_red, blue_yellow)), cv2.COLOR_LAB2BGR
+    balanced = as_bgr(
+        cv2.cvtColor(
+            cv2.merge((clahe.apply(lightness), green_red, blue_yellow)), cv2.COLOR_LAB2BGR
+        )
     )
 
     mean_luminance = float(cv2.cvtColor(balanced, cv2.COLOR_BGR2GRAY).mean())
@@ -355,8 +354,7 @@ def equalize_lighting(image: BgrArray, clip_limit: float = CLAHE_CLIP_LIMIT) -> 
     table = np.array(
         [((value / 255.0) ** exponent) * 255 for value in range(256)], dtype=np.uint8
     )
-    corrected: BgrArray = cv2.LUT(balanced, table)
-    return corrected
+    return as_bgr(cv2.LUT(balanced, table))
 
 
 def laplacian_variance(image: BgrArray) -> float:
@@ -375,8 +373,7 @@ def sharpen_if_soft(
     if laplacian_variance(image) >= laplacian_threshold:
         return image
     blurred = cv2.GaussianBlur(image, (0, 0), 3)
-    sharpened: BgrArray = cv2.addWeighted(image, 1.5, blurred, -0.5, 0)
-    return sharpened
+    return as_bgr(cv2.addWeighted(image, 1.5, blurred, -0.5, 0))
 
 
 def glare_ratio(image: BgrArray) -> float:
@@ -387,12 +384,11 @@ def glare_ratio(image: BgrArray) -> float:
 def remove_glare(image: BgrArray) -> BgrArray:
     """Transform 9 — inpaint saturated blobs. Off by default (`preproc.deglare_enabled`)."""
     value_channel = cv2.cvtColor(image, cv2.COLOR_BGR2HSV)[:, :, 2]
-    mask = (value_channel > GLARE_VALUE_THRESHOLD).astype(np.uint8) * 255
+    mask = as_gray((value_channel > GLARE_VALUE_THRESHOLD).astype(np.uint8) * 255)
     if not mask.any():
         return image
-    mask = cv2.dilate(mask, np.ones((5, 5), np.uint8), iterations=1)
-    repaired: BgrArray = cv2.inpaint(image, mask, 3, cv2.INPAINT_TELEA)
-    return repaired
+    mask = as_gray(cv2.dilate(mask, np.ones((5, 5), np.uint8), iterations=1))
+    return as_bgr(cv2.inpaint(image, mask, 3, cv2.INPAINT_TELEA))
 
 
 def binarize(image: BgrArray) -> BgrArray:
@@ -404,8 +400,7 @@ def binarize(image: BgrArray) -> BgrArray:
     binary = cv2.adaptiveThreshold(
         grayscale, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, cv2.THRESH_BINARY, 31, 15
     )
-    restored: BgrArray = cv2.cvtColor(binary, cv2.COLOR_GRAY2BGR)
-    return restored
+    return as_bgr(cv2.cvtColor(binary, cv2.COLOR_GRAY2BGR))
 
 
 def assess_quality(image: BgrArray) -> ImageQuality:

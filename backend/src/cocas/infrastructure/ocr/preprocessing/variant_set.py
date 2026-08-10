@@ -22,7 +22,9 @@ import numpy as np
 from cocas.domain.ports.ocr import ImageQuality, PreprocessProfile
 
 from . import transforms
+from .cv_types import PointArray
 from .image_data import BgrArray, NumpyImageData
+from .orientation import IOrientationOracle
 
 
 class LazyPreprocessedImageSet:
@@ -33,11 +35,13 @@ class LazyPreprocessedImageSet:
         source: BgrArray,
         exif_orientation: int | None,
         profile: PreprocessProfile,
+        orientation_oracle: IOrientationOracle | None = None,
     ) -> None:
         source.setflags(write=False)  # enforces "v0 is never modified"
         self._source = source
         self._exif_orientation = exif_orientation
         self._profile = profile
+        self._orientation_oracle = orientation_oracle
         self._cache: dict[str, NumpyImageData] = {}
         self._transform_matrix: list[list[float]] | None = None
         self._warped: BgrArray | None = None
@@ -134,11 +138,26 @@ class LazyPreprocessedImageSet:
 
         self._warped = (
             transforms.rotate_180(rectified)
-            if transforms.is_upside_down(rectified)
+            if self._is_upside_down(rectified)
             else rectified
         )
 
-    def _find_quad(self, base: BgrArray) -> np.ndarray | None:
+    def _is_upside_down(self, rectified: BgrArray) -> bool:
+        """Transform 4 — poll the orientation signals in order of precision.
+
+        ⭐ The MRZ signal goes first and wins outright when it has an opinion.
+        It reads the card's own geometry, it was right on 19 of 19 real backs,
+        and it costs about 20 ms. The oracle only gets asked about the cards
+        the MRZ signal cannot see — which is every front.
+        """
+        mrz_vote = transforms.mrz_orientation_vote(rectified)
+        if mrz_vote is not None:
+            return mrz_vote
+        if self._orientation_oracle is None:
+            return False
+        return bool(self._orientation_oracle.is_upside_down(NumpyImageData(rectified)))
+
+    def _find_quad(self, base: BgrArray) -> PointArray | None:
         if not self._profile.perspective_enabled:
             return None
         quad = transforms.find_card_quad(base)
