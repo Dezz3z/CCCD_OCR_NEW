@@ -89,10 +89,16 @@ _ZONE_MAP = {
 #
 # `id_number` keeps `Số / No.` as one phrase: `Số` alone is two characters and
 # fuzzy-matches `SOCIALIST REPUBLIC` at 100.
+#
+# ⭐ **`Số:` was dropped 2026-08-10 for the same reason, one round later.** The
+# shortened form survived the first cleanup because it looked long enough with
+# its colon; scored against the real header it reaches **80.0**, over the 75
+# anchor threshold. Nothing is lost by removing it — `id_number` is also found
+# by region height (`_TALLEST_WINS`), which needs no label at all.
 _ANCHOR_PATTERNS = {
     "front": {
         "full_name": ["Họ và tên", "Full name"],
-        "id_number": ["Số / No.", "Số:", "No.:"],
+        "id_number": ["Số / No.", "No.:"],
         "date_of_birth": ["Ngày sinh", "Date of birth"],
         "expiry_date": ["Có giá trị đến", "Date of expiry"],
     },

@@ -169,6 +169,12 @@ P7: Nghiệm thu      [    ] ⏳ TODO (1 tuần)
   - **885 test toàn dự án xanh** (+128), ruff sạch, `mypy --strict` domain+application 0 lỗi, import-linter 4/4
   - ⭐ **Chỉ tiêu MRZ ≥75% ĐÃ ĐẠT: 22/22 = 100%**, `repairs applied {0: 22}` — bộ sửa lỗi chưa từng phải chạy
   - ⭐ **Trích trường đo được:** `id_number` **14/14** · `date_of_birth` **12/12** · `full_name` 11/15
+- [x] **Tuần 3b: Thế hệ thẻ thứ hai + chỉ tiêu QR** — hoàn tất 2026-08-10
+  - ⭐ **Bộ mẫu chứa HAI thế hệ thẻ, phát hiện muộn 3 tuần.** 39 ảnh CCCD gắn chip 2021, **7 ảnh Căn cước 2024** — thế hệ mới in QR ở **mặt sau** và ngày hết hạn ở **mặt sau**. Đồng bộ vào `07 §7.4.7`, `03 §S4/S5`, `04 §4.4.13`
+  - `20260811_009_seed_doctype_2024.py` — doctype thứ hai (`zone_map` đo trên 7 ảnh thật, anchor riêng, 3 alias `BỘ CÔNG AN`). **Không sửa một dòng mã trích trường nào** — `DocumentTypeSpec` vốn đã hỗ trợ nhiều loại (P-06/P-12), đây là lần đầu cơ chế đó chịu tải thật
+  - ⭐ **Chỉ tiêu QR ≥90% ĐÃ ĐẠT: 20/21 = 95.2%** (từ 18/21). Thêm 2 lần thử đọc **kênh Blue** — hoa văn guilloche lam ngọc của thẻ biến mất ở kênh này. Không mất thẻ nào, +43 ms/ảnh
+  - ⭐ **Con số 66.7% cũ sai vì mẫu số sai**, không phải vì kênh yếu: nó suy nhãn mặt từ "có MRZ ⇒ mặt sau", nên đếm thừa 5 mặt trước 2024 (vốn không in QR) và đếm thiếu 2 mặt sau 2024 (có in QR). `verify_qr_mrz.py` nay gán nhãn thế hệ bằng **chữ in trên thẻ**
+  - **931 test xanh** (+46), ruff sạch, `mypy --strict` 0 lỗi, `mypy` gói OCR 0 lỗi, import-linter 4/4
 - [ ] Tuần 4: Chuẩn hoá + Fusion + Validation
 
 **Phát hiện khi chạy trên ảnh thật (đã sửa, đã đồng bộ vào `07-module-ocr.md` §7.4.1):**
@@ -222,6 +228,12 @@ P7: Nghiệm thu      [    ] ⏳ TODO (1 tuần)
 20. **`recognize_region()` trên một dải KHÔNG rẻ theo tỉ lệ diện tích** — dải cao 32% tốn 41% chi phí toàn thẻ, vì bộ dò của PaddleOCR chuẩn hoá theo cạnh dài mà dải full-width có cùng cạnh dài với thẻ. Hệ quả: đã cho khâu đọc dải tiêu đề của bộ phân loại mặt **chạy lười** (QR/MRZ đã chốt 36/46 ảnh, và trên 36 ảnh đó anchor chưa từng đổi kết luận). Quy trình P3 nên nhận dạng toàn thẻ **một lần** rồi dùng lại các vùng.
 
 21. **Hai tín hiệu texture của §7.4.2 (chân dung/vân tay) không triển khai** — cần Haar cascade, thêm tệp nhị phân phải đóng gói. Bốn tín hiệu còn lại đã phân loại 36/36 đúng. Bỏ theo P-10, có số liệu chống lưng, ghi rõ để thêm lại nếu Golden Set đòi.
+22. ⭐⭐ **Bộ mẫu chứa HAI thế hệ thẻ, và điều đó không lộ ra suốt 3 tuần.** 39 ảnh CCCD gắn chip 2021 + **7 ảnh Căn cước 2024**. Thế hệ 2024 in **QR ở mặt sau** (không phải mặt trước) và **ngày hết hạn ở mặt sau**, đổi tiêu đề thành `CĂN CƯỚC`, đổi nhãn số thẻ thành `Số định danh cá nhân`, đổi cơ quan cấp thành `BỘ CÔNG AN`. Lý do giấu được lâu: **mọi phép đo đều làm theo tỉ lệ tổng, không bao giờ soi từng ca lệch.** Cách phát hiện: hỏi "vì sao 8 ảnh này không đọc được QR" rồi mở từng ảnh ra xem. Sửa: thêm doctype thứ hai — **0 dòng mã trích trường phải đổi**, vì `DocumentTypeSpec` vốn đã mang `zone_map`/`anchor_patterns` riêng cho từng loại (P-06/P-12).
+23. ⭐ **Hoa văn nền của thẻ là thứ chặn QR, không phải độ phân giải.** Hai ảnh 1280×812 và 1295×793 (QR nhìn rõ bằng mắt) trượt cả 3 lần thử. Nguyên nhân: guilloche lam ngọc in **xuyên qua** mã QR. Màu lam ngọc sáng ở kênh Blue và tối ở kênh Red, nên tách kênh Blue xoá được nhiễu trong khi module QR gần đen vẫn tối; ảnh xám trộn nó trở lại ở trọng số 0.114. Thêm 2 lần thử kênh Blue (một có làm nét, một dùng binarizer `GlobalHistogram`) ⇒ **18/21 → 20/21**. ⚠️ Đổi tham số lần thử 3 (`1.6→3×` thành `2.5→4×`) đọc thêm 1 thẻ nhưng **mất** 1 thẻ khác: **thêm vào thắng chỉnh sửa**.
+24. ⭐ **Anchor `Ngày, tháng, năm cấp` và `Ngày, tháng, năm hết hạn` bắt nhầm dòng của nhau** — 83.9 và 83.3 điểm, đều vượt ngưỡng 75. `_beside_label` trả nhãn khớp **đầu tiên theo thứ tự đọc**, mà nhãn ngày cấp in trước ⇒ `expiry_date` sẽ nhận **ngày cấp** và báo đầy tự tin. Sửa bằng cách cắt anchor còn phần đuôi phân biệt (`năm cấp` / `năm hết hạn`). **Cùng lớp lỗi này còn sót trong seed 2021: anchor `Số:` chấm 80.0 với `SOCIALIST REPUBLIC OF VIET NAM`** — đã gỡ (đã có `_TALLEST_WINS` lo `id_number` không cần nhãn).
+25. ⭐ **Ngưỡng `KHÔNG THỜI HẠN` = 85 là chốt chặn không bao giờ kích hoạt được, và giữ nguyên là đúng.** Quét 774 dòng OCR thật: giá trị **thật** `ovong thoi hg` chấm **69.8**, còn dòng cao điểm nhất toàn bộ mẫu là **một cái tên người** (`PHAM THI PHU'O'NG THOA`, **76.2**). Giá trị đúng nằm *dưới* nhiễu ⇒ không ngưỡng nào nhận nó mà không nhận cả tên người trước. Chấm theo từ cũng không cứu được (chỉ 1/3 từ sống sót qua nhận dạng). Để trống là kết cục đúng — `expiry_date` không bắt buộc. ⚠️ Chú thích cũ nói chuỗi này chấm 80 và là "nhiễu từ phần không liên quan của thẻ": **sai cả hai vế**.
+26. **`find_date` phải chấp nhận ngày không có dấu phân cách.** Thẻ thật in `04/06/2025` nhưng bộ nhận dạng trả `04062025`, và trường ngày cấp mất hẳn. Thêm mẫu 8 chữ số đứng riêng + ràng buộc năm 1900–2100, chỉ thử sau khi mẫu có dấu phân cách trượt. Đo A/B trên 774 dòng: **0 mất, 1 nhận thêm** — thuần cộng thêm.
+27. **`find_place` từ chối mọi chuỗi có chữ số là chặt gấp đôi.** `BỘ CÔNG AN` được đọc thành `BO C0NG AI`, và đúng một chữ số `0` vứt bỏ cả dòng. Điều quy tắc này thực sự cần làm là phân biệt trường nơi cấp với ngày/số in cạnh nó, nên đổi sang tìm **run** chữ số (`\d{2}`): số in luôn có run, chữ bị đọc nhầm thì không.
 
 **Milestones:**
 - M2: 2 ảnh CCCD thật → 6 trường đúng (chạy offline)
@@ -242,10 +254,15 @@ P7: Nghiệm thu      [    ] ⏳ TODO (1 tuần)
   - 🎯 Người dùng chốt 2026-08-10: **đo trước, chốt sau**. Đo được: `full_name` 11/15 khớp chính xác; 3/4 ca còn lại chỉ **thiếu dấu cách**, 1 ca sai một ký tự. QR là nguồn chính (trọng số 1.00) nên ảnh hưởng nhỏ hơn lo ngại ban đầu. Quyết định cuối khi có Golden Set
 - 🟠 **Ngân sách p95 ≤ 9 s cần theo dõi** (phát hiện #20) — nhận dạng toàn thẻ 2.7 s, dải 1.1–1.2 s. Ước tính hiện tại ~3.9 s/ảnh sau khi cho anchor chạy lười
   - 🎯 P3: quy trình nhận dạng toàn thẻ **một lần** rồi dùng lại các vùng, thay vì nhiều lượt đọc dải
-- 🔴 QR chưa đạt ≥90% — ước lượng **16/24 ≈ 67% mặt trước** (mẫu số suy ra từ sự hiện diện MRZ, chặt hơn dải 54–81% của tuần 2 nhưng vẫn không phải nhãn thật)
-  - 🎯 Người dùng chốt 2026-08-09: **viết code tiếp, chốt KPI khi có Golden Set**. Nếu Golden Set xác nhận vẫn hụt, cân nhắc thêm lần thử thứ 4 (dò khối QR rồi cắt sát) hoặc hạ chỉ tiêu cho khớp thực tế
-- 🔴 Chưa có Golden Set 200 cặp ảnh **đã gán nhãn trước/sau**
+- ✅ ~~QR chưa đạt ≥90%~~ — **ĐÓNG 2026-08-10: đo 20/21 = 95.2%.** Hai nguyên nhân tách bạch, và cái thứ hai lớn hơn cái thứ nhất:
+  - **Mẫu số sai** (phát hiện #22): 5 mặt trước Căn cước 2024 bị tính là "QR trượt" dù thế hệ đó **không in QR ở mặt trước**, và 2 mặt sau có QR thì bị bỏ sót. Sửa nhãn ⇒ 66.7% → 85.7% mà không đụng một dòng mã giải mã nào
+  - **Kênh yếu thật** (phát hiện #23): thêm 2 lần thử đọc **kênh Blue** ⇒ 85.7% → **95.2%**, 0 thẻ bị mất, +43 ms/ảnh
+  - ⚠️ Nhãn thế hệ vẫn đọc bằng mắt trên 46 ảnh, chưa phải nhãn kiểm định — Golden Set vẫn cần để chốt chính thức
+- 🟠 **Phân loại mặt trên Căn cước 2024 chưa đo** (phát hiện #24) — mặt sau có **cả** QR (bỏ phiếu FRONT 0.40) lẫn MRZ (BACK 0.40) → nhiều khả năng hoà → `AMBIGUOUS`. An toàn (không đoán bừa) nhưng có thể bắt người dùng chọn mặt thủ công cho mọi thẻ 2024
+  - 🎯 Đo trước khi làm tuần 4; nếu đúng, thêm một tín hiệu phân biệt (thẻ 2024 chỉ có ảnh chân dung ở mặt trước)
+- 🔴 Chưa có Golden Set 200 cặp ảnh **đã gán nhãn trước/sau + thế hệ thẻ**
   - 🎯 **Vẫn chặn việc chốt chính thức mọi KPI của P2**, kể cả những chỉ tiêu đã đo đạt. Cũng là thứ duy nhất đo được **False Confidence ≤ 0.5%** — chỉ tiêu chặn phát hành mà tới giờ **chưa đo được lần nào**
+  - ⭐ **Nhãn phải có cả trường "thế hệ thẻ".** Bộ 53 ảnh chứa cả hai thế hệ suốt 3 tuần mà không lộ ra, vì mọi phép đo đều làm theo tỉ lệ tổng chứ không soi từng ca lệch. Golden Set thiếu nhãn này sẽ giấu đúng lỗi đó thêm một lần nữa
 
 ---
 

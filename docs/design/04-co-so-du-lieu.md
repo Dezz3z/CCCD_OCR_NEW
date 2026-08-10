@@ -793,7 +793,7 @@ erDiagram
 | Cột | Kiểu | Mô tả |
 |---|---|---|
 | `id` | UUID PK | |
-| `code` | VARCHAR(30) UNIQUE | v1.0: `CCCD_CHIP`. Sau: `GPLX`, `PASSPORT`, `GCN_DKDN` |
+| `code` | VARCHAR(30) UNIQUE | ⭐ v1.0: **`CCCD_CHIP` và `CAN_CUOC_2024`** — hai thế hệ thẻ đang lưu hành, khác nhau ở vị trí QR và ngày hết hạn ([`07 §7.4.7`](07-module-ocr.md#747-hai-thế-hệ-thẻ)). Sau: `GPLX`, `PASSPORT`, `GCN_DKDN` |
 | `name` | VARCHAR(100) | "Căn cước công dân gắn chip" |
 | `field_schema` | JSONB | `[{"key":"full_name","type":"text","required":true,"label":"Họ và tên"}]` |
 | ⭐ `zone_map` | JSONB | Toạ độ tương đối từng trường trên khung chuẩn (S8) — **hiệu chỉnh được qua UI** |
@@ -1258,6 +1258,9 @@ tag(16)
 | 6 | `20260811_006_seed_bank` | ~50 ngân hàng + độ dài STK |
 | 7 | `20260811_007_seed_setting` | ~30 khoá cấu hình mặc định |
 | 8 | `20260811_008_seed_template` | 2 mẫu: `01A_HD_GDN`, `01A_GDKQ` |
+| ⭐ 9 | `20260811_009_seed_doctype_2024` | 1 bản ghi `CAN_CUOC_2024` + zone_map/anchor riêng + 3 alias `BỘ CÔNG AN` |
+
+> ⭐ **Vì sao là migration mới chứ không sửa `003`:** `003` là seed dùng `ON CONFLICT DO NOTHING`, nên sửa tại chỗ sẽ khiến mọi CSDL **đã migrate** không bao giờ nhận được thế hệ thẻ mới lẫn alias của nó. Đây là ranh giới giữa "hiệu chỉnh số liệu của một bản ghi đã có" (sửa `003` được, như tuần 3 đã làm với `zone_map`) và "thêm một bản ghi mới" (bắt buộc migration mới).
 
 ---
 

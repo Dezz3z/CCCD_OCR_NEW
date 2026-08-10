@@ -78,6 +78,7 @@ Vi phạm = phải sửa, không phải tranh luận.
 | Thư viện Python | **39** |
 | Wizard | **3 bước** |
 | Mẫu hợp đồng | **2** (`01A_HD_GDN`, `01A_GDKQ`) |
+| ⭐ Thế hệ thẻ hỗ trợ | **2** (`CCCD_CHIP` 2021, `CAN_CUOC_2024`) |
 
 ---
 
@@ -125,7 +126,7 @@ Vi phạm = phải sửa, không phải tranh luận.
 
 **Giai đoạn 1 (Thiết kế): ✅ HOÀN THÀNH** — tài liệu D2.0 đã đóng băng, 0 lỗi kiến trúc đã biết.
 
-**Giai đoạn 2 (Triển khai): P0 ✅ + P1 ✅ HOÀN THÀNH (2026-08-09). P2 (OCR) đang làm — tuần 1 (tiền xử lý ảnh) ✅ + tuần 2 (kênh QR/MRZ) ✅ xong 2026-08-09, tuần 3 (engine + phân loại mặt + trích trường) ✅ xong 2026-08-10.**
+**Giai đoạn 2 (Triển khai): P0 ✅ + P1 ✅ HOÀN THÀNH (2026-08-09). P2 (OCR) đang làm — tuần 1 (tiền xử lý ảnh) ✅ + tuần 2 (kênh QR/MRZ) ✅ xong 2026-08-09, tuần 3 (engine + phân loại mặt + trích trường) ✅ xong 2026-08-10, tuần 3b (thế hệ thẻ thứ hai + chốt chỉ tiêu QR) ✅ xong 2026-08-10 — 931 test xanh.**
 Chi tiết đầy đủ từng module — xem [progress.md](progress.md) (cập nhật theo từng module, không rút gọn).
 
 ### Kiến trúc đã triển khai (P0 + P1)
@@ -168,13 +169,18 @@ Mọi mục dưới đây đã đồng bộ ngược vào `docs/design/`, không
 
 1. ⭐ **Vẫn thiếu Golden Set 200 cặp ảnh CCCD đã gán nhãn và 2 file `.docx` thật.** Đây giờ là thứ **duy nhất** chặn việc chốt KPI P2, và là thứ duy nhất đo được **False Confidence ≤0.5%** — chỉ tiêu chặn phát hành, tới giờ **chưa đo được lần nào**.
    - **MRZ ≥75%: đã đo 22/22 = 100%** (2026-08-10), 0 lần phải sửa lỗi, 2/2 ảnh có cả hai kênh cho số CCCD khớp nhau.
-   - **QR ≥90%: ước lượng 16/24 ≈ 67% mặt trước** — mẫu số suy ra từ sự hiện diện MRZ, chặt hơn dải 54–81% cũ nhưng vẫn không phải nhãn thật.
+   - **QR ≥90%: đã đo 20/21 = 95.2%** (2026-08-10) trên các ảnh **thật sự có in QR**.
+   - ⭐ **Nhãn của Golden Set phải có cả trường "thế hệ thẻ"** — xem ràng buộc 7.
    - Đo lại bất cứ lúc nào: `python backend/scripts/verify_qr_mrz.py "<thư mục ảnh>"`.
 2. **PyInstaller + asyncpg**: `hiddenimports = ["asyncpg.pgproto"]` không đủ — asyncpg nạp submodule Cython biên dịch sẵn không thấy được qua static analysis. Dùng `collect_submodules("asyncpg")` (đã áp dụng trong `build.spec`).
 3. **`console=False` (bản production) sẽ crash lúc khởi động** — `loguru_config.configure_logging()`'s console sink gọi `logger.add(sys.stderr, ...)`, và `sys.stderr` là `None` dưới chế độ windowed của PyInstaller. Cố ý để lại cho P5/P6 (khi Supervisor đọc log qua file), **không phải bug đã sửa**.
 4. ✅ ~~Sửa xoay 180° cho mặt trước~~ — **xong tuần 3.** ⚠️ Nhưng **không** bằng model `cls` như dự kiến: tín hiệu `cls`/đếm vùng text không phân biệt được hai chiều (xem quyết định ở trên). Dùng dấu vân chữ in sẵn ở dải trên; đo 44/46 đúng cả hai chiều, **0 sai**.
 5. Kích thước gói `onedir` đo thật ở bản trial ~505 MB (tài liệu ước tính 180 MB cho bản cuối) — nay cộng thêm **16 MB** `resources/ocr-models` (nhẹ hơn ước tính 850 MB rất nhiều vì model PP-OCRv3 mobile nhỏ). Vẫn theo dõi ngân sách 1.5 GB (§14.5 sổ rủi ro).
-6. ⚠️ **Ngân sách p95 ≤ 9 s cần theo dõi ở P3.** Đo thật: `recognize()` toàn thẻ 2.7 s, `recognize_region()` một dải 1.1–1.2 s (**không** rẻ theo tỉ lệ diện tích — bộ dò chuẩn hoá theo cạnh dài). Quy trình P3 nên nhận dạng toàn thẻ **một lần** rồi dùng lại các vùng, thay vì nhiều lượt đọc dải.
+6. ⭐⭐ **CÓ HAI THẾ HỆ THẺ, và bộ mẫu chứa cả hai.** Căn cước 2024 (`CAN_CUOC_2024`) in **QR ở mặt SAU** và **ngày hết hạn ở mặt SAU** — ngược với CCCD gắn chip 2021 (`CCCD_CHIP`). Tiêu đề `CĂN CƯỚC`, nhãn số thẻ `Số định danh cá nhân`, cơ quan cấp `BỘ CÔNG AN`. Mỗi thế hệ là **một dòng `document_type` riêng** với `zone_map`/`anchor_patterns` riêng — không có mã trích trường nào biết đến thế hệ. Chi tiết: `07-module-ocr.md §7.4.7`.
+   - ⚠️ Điều này ẩn suốt 3 tuần vì mọi phép đo đều làm theo **tỉ lệ tổng**. Khi một tỉ lệ trông thấp, hãy mở từng ca lệch ra xem trước khi kết luận kênh yếu — lần này 19 trong 23 điểm phần trăm hụt là do **mẫu số sai**, không phải do bộ giải mã.
+   - ⚠️ **Chưa đo:** phân loại mặt trên thẻ 2024 — mặt sau có cả QR (phiếu FRONT) lẫn MRZ (phiếu BACK) nên nhiều khả năng hoà → `AMBIGUOUS`.
+7. ⚠️ **Anchor ngắn vẫn là cái bẫy chưa hết.** Sau `Số` (2 ký tự, khớp `SOCIALIST REPUBLIC` 100 điểm) là `Số:` (3 ký tự, **80.0**) — gỡ 2026-08-10. Và hai nhãn chia nhau tiền tố dài (`Ngày, tháng, năm cấp` / `…hết hạn`) khớp chéo ở 83.9/83.3. Mọi anchor mới **phải** được chấm với dòng tiêu đề thật trước khi gieo; `tests/unit/infrastructure/ocr/extraction/test_doctype_seeds.py` làm việc đó tự động.
+8. ⚠️ **Ngân sách p95 ≤ 9 s cần theo dõi ở P3.** Đo thật: `recognize()` toàn thẻ 2.7 s, `recognize_region()` một dải 1.1–1.2 s (**không** rẻ theo tỉ lệ diện tích — bộ dò chuẩn hoá theo cạnh dài). Quy trình P3 nên nhận dạng toàn thẻ **một lần** rồi dùng lại các vùng, thay vì nhiều lượt đọc dải.
 
 ### Quy trình làm việc Giai đoạn 2
 

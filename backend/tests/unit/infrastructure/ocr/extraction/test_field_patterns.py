@@ -46,6 +46,27 @@ class TestDate:
     def test_rejects_an_impossible_date(self, text):
         assert field_patterns.find_date(text) is None
 
+    def test_reads_a_date_whose_separators_the_recognizer_swallowed(self):
+        """⭐ Real output from a Căn cước 2024 back; without this the issue date
+        went unread entirely."""
+        assert field_patterns.find_date("04062025") == "04/06/2025"
+
+    def test_prefers_the_separated_date_when_both_shapes_are_present(self):
+        """A bare run is far weaker evidence, so it is only a fallback."""
+        assert field_patterns.find_date("04062025 cap 12/06/2026") == "12/06/2026"
+
+    @pytest.mark.parametrize(
+        "text",
+        [
+            "001087043408",  # 12 digits — the citizen id, not a date
+            "0406202",  # 7 digits
+            "040620251",  # 9 digits
+            "04061899",  # year below the plausible range
+        ],
+    )
+    def test_a_bare_digit_run_is_not_a_date_unless_it_looks_like_one(self, text):
+        assert field_patterns.find_date(text) is None
+
 
 class TestExpiry:
     def test_reads_a_date(self):
@@ -54,9 +75,22 @@ class TestExpiry:
     def test_reads_the_words_a_card_without_an_expiry_prints(self):
         assert field_patterns.find_expiry("Khong thoi han") == field_patterns.NO_EXPIRY
 
-    def test_a_garbled_fragment_no_longer_passes_as_no_expiry(self):
-        """⭐ Real recognizer output that scored exactly 80 against the phrase."""
+    def test_a_garbled_no_expiry_is_left_unread_rather_than_guessed(self):
+        """⭐ `ovong thoi hg` IS the genuine value on a Căn cước 2024 back, and
+        it is still refused — on purpose.
+
+        Swept over all 774 recognized lines in the sample, it scores **69.8**
+        while the highest-scoring line of any kind is a person's name
+        (`PHAM THI PHU'O'NG THOA`, **76.2**). The true value sits *below* the
+        noise, so no threshold accepts it without first accepting a name.
+        `expiry_date` is optional; a blank the user fills in beats a confident
+        wrong value.
+        """
         assert field_patterns.find_expiry("ovong thoi hg") is None
+
+    def test_a_name_never_passes_as_no_expiry(self):
+        """The line that would break first if the threshold were lowered."""
+        assert field_patterns.find_expiry("PHAM THI PHU'O'NG THOA") is None
 
 
 class TestName:
@@ -98,8 +132,19 @@ class TestPlace:
         assert field_patterns.find_place("CUC TRUONG CUC CANH SAT") is not None
 
     @pytest.mark.parametrize("text", ["Ha Noi 2022", "short", "Personal identification"])
-    def test_rejects_digits_fragments_and_headings(self, text):
+    def test_rejects_digit_runs_fragments_and_headings(self, text):
         assert field_patterns.find_place(text) is None
+
+    def test_keeps_a_letter_the_recognizer_mistook_for_a_single_digit(self):
+        """⭐ `BỘ CÔNG AN` comes back as `BO C0NG AI`. Rejecting on *any* digit
+        threw away the only reading of `issue_place` on a real card; a printed
+        number always has a RUN of digits, a misread letter never does."""
+        assert field_patterns.find_place("BO C0NG AI/werYo ruc") is not None
+
+    def test_still_rejects_a_date_sharing_the_zone(self):
+        """The reason the digit rule exists at all: `issue_place` sits one line
+        below `expiry_date` on a Căn cước 2024 back."""
+        assert field_patterns.find_place("06/08/2046") is None
 
 
 class TestFinderCoverage:

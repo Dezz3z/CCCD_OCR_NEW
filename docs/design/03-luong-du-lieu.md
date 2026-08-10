@@ -14,7 +14,7 @@
 | **S2** | Tạo phiên OCR | 2 × `image_id` | `ocr_session` (QUEUED) + `job` | Sync | HTTP 4xx |
 | **S3** | Tiền xử lý ảnh | Ảnh gốc | Biến thể (tạo lười) + ma trận biến đổi | Async | `FAILED`, retry |
 | **S4** | Phân loại mặt trước/sau | 2 ảnh | Nhãn `FRONT`/`BACK` + độ tin cậy | Async | `NEEDS_REUPLOAD` |
-| **S5** | Kênh QR | Ảnh mặt trước | Dict trường + conf = 1.00 | Async | Bỏ qua kênh |
+| **S5** | Kênh QR | ⭐ Ảnh mang QR (mặt trước ở CCCD 2021, **mặt sau** ở Căn cước 2024) | Dict trường + conf = 1.00 | Async | Bỏ qua kênh |
 | **S6** | Kênh MRZ | Ảnh mặt sau | Dict trường + checksum status | Async | Bỏ qua kênh |
 | **S7** | Kênh OCR | 2 ảnh (hoặc ROI) | `[(bbox, text, conf)]` | Async | `FAILED` nếu cả 3 kênh chết |
 | **S8** | Trích xuất trường | Text OCR + layout | 6 trường thô | Async | Trường = null, conf = 0 |
@@ -135,28 +135,32 @@ Chuỗi 9 phép biến đổi, mỗi phép **bật/tắt và tinh chỉnh đư�
 |---|---|---|---|
 | Có QR giải mã được | **0.40** | Payload khớp `^\d{12}\|` | → FRONT |
 | Có vùng MRZ | **0.40** | 20% đáy ảnh, ≥3 dòng, mật độ `<` > 15% | → BACK |
-| Anchor text mặt trước | 0.15 | Fuzzy ≥80%: "CĂN CƯỚC CÔNG DÂN", "CỘNG HÒA XÃ HỘI CHỦ NGHĨA VIỆT NAM", "Số / No.", "Họ và tên / Full name" | → FRONT |
-| Anchor text mặt sau | 0.15 | Fuzzy: "Đặc điểm nhân dạng", "Ngày, tháng, năm", "CỤC TRƯỞNG", "Personal identification" | → BACK |
+| Anchor text mặt trước | 0.15 | Fuzzy ≥80%: "CĂN CƯỚC CÔNG DÂN", "CĂN CƯỚC", "CỘNG HÒA XÃ HỘI CHỦ NGHĨA VIỆT NAM", "Số / No.", "Họ và tên / Full name" | → FRONT |
+| Anchor text mặt sau | 0.15 | Fuzzy: "Đặc điểm nhân dạng", "Ngày, tháng, năm", "CỤC TRƯỞNG", "Personal identification", "Nơi đăng ký khai sinh" | → BACK |
 | Vùng chân dung góc trái-dưới | 0.10 | Haar cascade / texture | → FRONT |
 | Vùng vân tay góc trái | 0.10 | Mẫu vân tần số cao có hướng | → BACK |
 
-**Ngưỡng:** ≥ 0.60 chấp nhận · 0.35–0.60 cần bằng chứng thứ hai · < 0.35 → `AMBIGUOUS`.
+**Ngưỡng:** ≥ 0.40 chấp nhận (hiệu chỉnh 2026-08-10 — 0.60 cao hơn điểm tối đa đạt được) · dưới ngưỡng ở cả hai ảnh → `AMBIGUOUS`.
+
+> ⚠️ **Quy tắc "có QR ⇒ FRONT" chỉ đúng với CCCD 2021.** Căn cước 2024 in QR ở **mặt sau**, nên mặt sau của nó nhận **cả** 0.40 FRONT (QR) lẫn 0.40 BACK (MRZ) → hoà → bộ phân loại bỏ phiếu trắng và trả `AMBIGUOUS`. An toàn (không đoán bừa) nhưng có thể bắt người dùng chọn mặt thủ công cho mọi thẻ 2024. **Chưa đo trên ảnh thật** — xem [`07 §7.4.7`](07-module-ocr.md#747-hai-thế-hệ-thẻ).
 
 ---
 
 ### S5 — Kênh QR (Nguồn tin cậy hạng A)
 
-QR mặt trước CCCD gắn chip chứa dữ liệu số hoá trực tiếp từ CSDL dân cư — **không phải nhận dạng ảnh** → chính xác 100% nếu giải mã thành công.
+QR chứa dữ liệu số hoá trực tiếp từ CSDL dân cư — **không phải nhận dạng ảnh** → chính xác 100% nếu giải mã thành công. ⭐ Nó nằm ở **mặt trước** trên CCCD 2021 và ở **mặt sau** trên Căn cước 2024; kênh này không cần biết — nó quét bất kỳ ảnh nào được đưa vào.
 
 | Lần thử | Ảnh | Kỹ thuật |
 |---|---|---|
 | 1 | `v0` độ phân giải gốc | `zxingcpp.read_barcodes` (`try_rotate` · `try_downscale` · `try_invert`) |
 | 2 | `v1` phóng 2× | Cùng bộ giải mã — bù ca QR quá nhỏ sau khi thu về 1600px |
-| 3 | `v0` góc phải-trên, làm nét rồi phóng 3× | QR trên CCCD nằm ở góc này |
+| 3 | `v0` góc phải-trên, làm nét 1.6 rồi phóng 3× | QR nằm ở góc này |
+| ⭐ 4 | Góc phải-trên, **kênh Blue**, làm nét 2.5, phóng 4× | Xoá hoa văn guilloche lam ngọc chạy xuyên QR |
+| ⭐ 5 | Góc phải-trên, **kênh Blue**, phóng 4×, binarizer `GlobalHistogram` | Ngưỡng toàn cục thay vì cục bộ |
 
 > ⭐ Bộ giải mã là **`zxing-cpp`**, không phải WeChat/pyzbar như bản D2.0 gốc — lý do và số liệu đo thật: [`07-module-ocr.md §7.4.3`](07-module-ocr.md#743-zxingqrdecoder).
 
-> ⭐ **Rút từ 5 xuống 3 lần thử.** Hai lần cuối (quét 4 góc phần tư) có lợi ích biên rất thấp nhưng tốn ~0.8 giây ở ca xấu. Nếu 3 lần đều trượt thì QR thực sự không đọc được, và kênh MRZ đã đủ bù.
+> ⭐ **Rút từ 5 xuống 3 lần (2026-08-09), rồi lên lại 5 lần với nội dung khác (2026-08-10).** Hai lần bị bỏ là *quét 4 góc phần tư*; hai lần thêm vào **xử lý màu khác đi** tại đúng vị trí đã biết. Đo thật: cứu 2/3 thẻ mà 3 lần đầu từ chối, **không mất thẻ nào**, +43 ms/ảnh. Tổng: **20/21 = 95.2%**.
 
 **Phân tích payload:** tách theo `|`, ánh xạ theo vị trí. **Kiểm tra hợp lý bắt buộc:** phần tử đầu phải là 12 chữ số; ngày phải parse được `ddmmyyyy`. Không khớp → `layout_recognized=False`, `qr_available=False`, ghi log cảnh báo với payload đã che PII.
 

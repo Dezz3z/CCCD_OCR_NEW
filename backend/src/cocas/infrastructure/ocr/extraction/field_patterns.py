@@ -22,14 +22,44 @@ from ..text_matching import is_printed_boilerplate, matches_any, similarity
 # and the `.`/`-` it substitutes for `/`.
 _DATE = re.compile(r"(\d{2})\s*[/.\-]\s*(\d{2})\s*[/.\-]\s*(\d{4})")
 
+# ⭐ The same date with every separator dropped — `04062025`. Measured on a real
+# Căn cước 2024 back, where the recognizer swallowed both slashes and the issue
+# date went unread entirely. Only tried after `_DATE` fails, and only on a run
+# that is exactly 8 digits long, so it cannot bite a chunk out of the 12-digit
+# citizen id or an MRZ line.
+_DATE_NO_SEPARATOR = re.compile(r"(?<!\d)(\d{2})(\d{2})(\d{4})(?!\d)")
+
+# Bounds on a plausible printed year. Loose enough for any real card, tight
+# enough that an 8-digit run which is not a date usually fails here.
+_MIN_YEAR, _MAX_YEAR = 1900, 2100
+
 # The CCCD number: exactly 12 digits, not part of a longer run.
 _ID_NUMBER = re.compile(r"(?<!\d)(\d{12})(?!\d)")
 
 # Cards issued without an expiry print this instead of a date.
 NO_EXPIRY = "KHÔNG THỜI HẠN"
-# ⭐ 85, not the 80 used elsewhere: a garbled `ovong thoi hg` from an unrelated
-# part of a real card scored exactly 80 against this phrase. A short fuzzy
-# anchor is the easiest way to spend the False Confidence budget.
+
+# ⚠️ **This guard cannot fire on the current recognizer, and that is deliberate
+# after measuring.** Swept over all 774 recognized lines in the sample:
+#
+# | Line | Score |
+# |---|---|
+# | `PHAM THI PHU'O'NG THOA` — a person's name | **76.2** ← highest of all |
+# | `Tan Minh,Thuo'ng Tin,Ha Noi` — an address | 75.0 |
+# | `ovong thoi hg` — ⭐ the **genuine** value on a Căn cước 2024 back | **69.8** |
+#
+# The true value scores *below* the noise, so no threshold accepts it without
+# first accepting a name. Token-wise matching does not rescue it either: of
+# `KHÔNG THỜI HẠN` only `THỜI` survived recognition at all.
+#
+# Leaving the field unread is the correct outcome — `expiry_date` is optional
+# and a blank the user fills in beats a confident wrong value. The constant
+# stays for a future recognizer that reads the phrase legibly.
+#
+# ⚠️ An earlier comment here claimed this string scored 80 and was noise "from
+# an unrelated part of a real card". Both halves were wrong: it scores 69.8,
+# and it is the expiry field of a card generation the design did not yet know
+# existed.
 _NO_EXPIRY_THRESHOLD = 85.0
 
 
@@ -41,7 +71,12 @@ _NAME_LINE = re.compile(r"^[A-Za-zÀ-ỹ' ]{4,}$")
 # has to be stripped before the value can be read.
 _LABEL_TAIL = re.compile(r"^.*?[:;]\s*")
 
+# Two or more digits together. A printed number always has one; a letter the
+# recognizer mistook for a digit (`CÔNG` → `C0NG`) never does.
+_DIGIT_RUN = re.compile(r"\d{2}")
+
 MIN_NAME_WORDS = 2
+MIN_PLACE_LENGTH = 8
 
 
 def find_id_number(text: str) -> str | None:
@@ -55,14 +90,27 @@ def find_date(text: str) -> str | None:
 
     ⭐ Returned with slashes regardless of what the recognizer produced, so the
     validation layer sees one format and fusion compares like with like.
+
+    Separated dates are tried first; a bare 8-digit run is only read as a date
+    when nothing better is present, because that shape is far weaker evidence.
     """
-    match = _DATE.search(text)
-    if match is None:
-        return None
-    day, month, year = match.groups()
-    if not (1 <= int(day) <= 31 and 1 <= int(month) <= 12):
-        return None
-    return f"{day}/{month}/{year}"
+    for pattern in (_DATE, _DATE_NO_SEPARATOR):
+        match = pattern.search(text)
+        if match is None:
+            continue
+        day, month, year = match.groups()
+        if _is_a_plausible_date(day, month, year):
+            return f"{day}/{month}/{year}"
+    return None
+
+
+def _is_a_plausible_date(day: str, month: str, year: str) -> bool:
+    """Calendar-shaped, without pretending to know how long each month is."""
+    return (
+        1 <= int(day) <= 31
+        and 1 <= int(month) <= 12
+        and _MIN_YEAR <= int(year) <= _MAX_YEAR
+    )
 
 
 def find_expiry(text: str) -> str | None:
@@ -100,9 +148,15 @@ def find_place(text: str) -> str | None:
     whatever survives here into one of exactly two canonical values, or None.
     Being strict twice would only lose readings that the normalizer could have
     rescued.
+
+    ⭐ Rejecting on *any* digit was strict twice, and it cost a real reading:
+    the recognizer renders `BỘ CÔNG AN` as `BO C0NG AI`, and that lone `0` threw
+    away the whole line. What the rule is actually for is telling this field
+    apart from the date and id printed near it, so it now looks for a **run** of
+    digits — which a number always has and a misread letter never does.
     """
     candidate = _strip_label(text).strip()
-    if len(candidate) < 8 or any(character.isdigit() for character in candidate):
+    if len(candidate) < MIN_PLACE_LENGTH or _DIGIT_RUN.search(candidate):
         return None
     if is_printed_boilerplate(candidate):
         return None

@@ -55,10 +55,45 @@ class TestNoQrPresent:
         assert result.available is False
 
     def test_spends_every_attempt_before_giving_up(self, decoder, blank_set):
-        assert decoder.decode(blank_set).attempts == 3
+        assert decoder.decode(blank_set).attempts == 5
 
     def test_carries_no_fields(self, decoder, blank_set):
         assert decoder.decode(blank_set).fields == {}
+
+
+class TestBlueChannelAttempts:
+    """⭐ Attempts 4 and 5, added after 3 real cards defeated attempts 1–3.
+
+    A CCCD's background is a fine turquoise guilloche printed straight through
+    the QR. Cyan is bright in blue and dark in red, so the blue channel erases
+    the interference while the near-black modules stay dark.
+    """
+
+    def test_the_blue_channel_is_the_one_where_a_turquoise_pattern_vanishes(self):
+        from cocas.infrastructure.ocr.channels import qr_decoder
+
+        # A cyan patch with a black square on it — the card's situation.
+        card = np.zeros((20, 20, 3), dtype=np.uint8)
+        card[:, :] = (230, 220, 40)  # BGR: bright blue+green, dark red
+        card[5:15, 5:15] = (20, 20, 20)
+
+        blue = qr_decoder._blue_channel(card)
+        background, module = int(blue[0, 0]), int(blue[10, 10])
+        assert background - module > 150
+
+    def test_the_red_channel_would_have_hidden_the_module(self):
+        """The control: why the choice of channel is not arbitrary."""
+        card = np.zeros((20, 20, 3), dtype=np.uint8)
+        card[:, :] = (230, 220, 40)
+        card[5:15, 5:15] = (20, 20, 20)
+
+        red_background, red_module = int(card[0, 0, 2]), int(card[10, 10, 2])
+        assert red_background - red_module < 30
+
+    def test_a_readable_card_still_wins_on_the_first_attempt(self, decoder, qr_card_set):
+        """⭐ Appending attempts must not change what already worked — the whole
+        reason attempt 3 was left alone instead of retuned."""
+        assert decoder.decode(qr_card_set).attempts == 1
 
 
 class TestLayoutDefence:

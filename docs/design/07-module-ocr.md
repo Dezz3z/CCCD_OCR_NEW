@@ -14,7 +14,7 @@ Module OCR là phần **có giá trị kỹ thuật cao nhất** và cũng **d�
 
 | Hạng | Nguồn | Bản chất | Độ chính xác | Trường phủ được |
 |---|---|---|---|---|
-| **A** | **Mã QR** (mặt trước) | Dữ liệu số hoá trực tiếp từ CSDL dân cư — *không phải nhận dạng ảnh* | **100%** khi giải mã được | Họ tên, số CCCD, ngày sinh, giới tính, địa chỉ, ngày cấp |
+| **A** | **Mã QR** (⭐ mặt trước ở CCCD 2021, **mặt sau** ở Căn cước 2024 — [§7.4.7](#747-hai-thế-hệ-thẻ)) | Dữ liệu số hoá trực tiếp từ CSDL dân cư — *không phải nhận dạng ảnh* | **100%** khi giải mã được | Họ tên, số CCCD, ngày sinh, giới tính, địa chỉ, ngày cấp |
 | **B** | **Vùng MRZ** (mặt sau) | Chuỗi ICAO 9303 TD1, **có ký tự kiểm tra tự xác thực** | **98%** khi checksum hợp lệ | Số CCCD, ngày sinh, **ngày hết hạn**, giới tính |
 | **C** | **OCR văn bản** | Nhận dạng ảnh — có thể sai | 85–95% | Tất cả, đặc biệt **nơi cấp** (nguồn duy nhất) |
 
@@ -256,15 +256,23 @@ graph TB
 
 ### 7.4.3. `ZxingQrDecoder`
 
-**Chuỗi thử (3 lần, dừng ở lần đầu thành công):**
+**Chuỗi thử (5 lần, dừng ở lần đầu thành công):**
 
-| Lần | Ảnh | Kỹ thuật |
-|---|---|---|
-| 1 | `v0` độ phân giải gốc | `zxingcpp.read_barcodes` (`try_rotate` · `try_downscale` · `try_invert`) |
-| 2 | `v1` phóng 2× | Cùng bộ giải mã — bù ca QR quá nhỏ sau khi thu về 1600px |
-| 3 | `v0` góc phải-trên, làm nét rồi phóng 3× | QR trên CCCD nằm ở góc này; unsharp bù ảnh chụp mềm nét |
+| Lần | Ảnh | Bộ nhị phân hoá | Kỹ thuật |
+|---|---|---|---|
+| 1 | `v0` độ phân giải gốc | `LocalAverage` | `zxingcpp.read_barcodes` (`try_rotate` · `try_downscale` · `try_invert`) |
+| 2 | `v1` phóng 2× | `LocalAverage` | Cùng bộ giải mã — bù ca QR quá nhỏ sau khi thu về 1600px |
+| 3 | `v0` góc phải-trên, làm nét 1.6 rồi phóng 3× | `LocalAverage` | QR nằm ở góc này; unsharp bù ảnh chụp mềm nét |
+| ⭐ 4 | Góc phải-trên, **kênh Blue**, làm nét 2.5, phóng 4× | `LocalAverage` | Xoá hoa văn nền |
+| ⭐ 5 | Góc phải-trên, **kênh Blue**, phóng 4× | ⭐ `GlobalHistogram` | Ngưỡng toàn cục cho vùng chỉ có thẻ và QR |
 
-> ⭐ **Rút từ 5 xuống 3 lần.** Hai lần cuối trong thiết kế cũ (quét 4 góc phần tư) có lợi ích biên rất thấp nhưng tốn ~0.8 giây ở ca xấu. Nếu 3 lần đều trượt thì QR thực sự không đọc được, và kênh MRZ đã đủ bù.
+> ⭐ **Hai lần thử cuối đọc kênh Blue, và đó là toàn bộ lý do chúng tồn tại (2026-08-10).** Nền CCCD là hoa văn guilloche lam ngọc chạy **xuyên qua** mã QR. Màu lam ngọc sáng ở kênh Blue và tối ở kênh Red, nên tách riêng kênh Blue xoá được nhiễu trong khi các module QR gần đen vẫn tối; ảnh xám trộn nó trở lại với trọng số 0.114 và bộ giải mã không bao giờ bắt được.
+>
+> Đo trên 3 thẻ mà cả 3 lần thử đầu đều từ chối: **2 trong 3 đọc được**. Ảnh thứ ba chỉ 624×400 — QR thật sự không đủ module.
+>
+> ⚠️ **Lần 3 giữ nguyên `làm nét 1.6 → 3×` dù `2.5 → 4×` đọc thêm được một thẻ:** đổi nó thì **mất** một thẻ khác mà chỉ lần 3 từng đọc nổi. Ở đây **thêm vào thắng chỉnh sửa** — đó là lý do chuỗi dài ra thay vì đổi tham số.
+
+> ⭐ **Rút từ 5 xuống 3 lần (2026-08-09), rồi trở lại 5 lần với nội dung khác hẳn (2026-08-10).** Hai lần bị bỏ trong thiết kế cũ là *quét 4 góc phần tư* — lợi ích biên rất thấp, tốn ~0.8 giây. Hai lần thêm vào bây giờ không phải quét thêm vị trí mà **xử lý màu khác đi** ở đúng vị trí đã biết, và chúng có bằng chứng đo được. Chi phí: **+43 ms/ảnh** (100 → 145 ms), không mất thẻ nào.
 
 > ⭐ **Bộ giải mã đã đổi sang `zxing-cpp` (2026-08-09) — đo thật trên 53 ảnh CCCD, không phải suy luận.** Hai bộ giải mã trong thiết kế gốc đều **không dùng được với danh sách thư viện đã ghim**:
 >
@@ -277,7 +285,19 @@ graph TB
 >
 > `zxing-cpp` cho **đúng độ chính xác của WeChat, nhanh gấp 61 lần** (chỉ lệch 2/53 ảnh theo cả hai chiều). Chọn nó cũng gỡ luôn rủi ro VC++ redist khỏi khâu đóng gói NSIS.
 
-⚠️ **Chỉ tiêu ≥90% CHƯA được kiểm chứng.** Đo trên 53 ảnh mẫu dev: 21 ảnh đọc được. Mẫu số thật không chốt được vì bộ ảnh **chưa gán nhãn mặt trước/sau** — ước lượng nằm trong dải **54–81% số mặt trước**, dưới chỉ tiêu. Phải đo lại bằng Golden Set 200 cặp đã gán nhãn trước khi coi chỉ tiêu này là đạt.
+⭐ **Chỉ tiêu ≥90%: đo được 20/21 = 95.2% (2026-08-10).** Mẫu số cuối cùng cũng chốt được, sau khi gán nhãn **thế hệ thẻ** cho từng ảnh — xem [§7.4.7](#747-hai-thế-hệ-thẻ):
+
+| Nhóm | Ảnh | Có in QR | QR đọc được |
+|---|---|---|---|
+| CCCD 2021 — mặt trước | 19 | 19 | **16** |
+| CCCD 2021 — mặt sau | 20 | 0 | — (đúng: không in QR) |
+| ⭐ Căn cước 2024 — mặt trước | 5 | **0** | — (đúng: **không in QR**) |
+| ⭐ Căn cước 2024 — mặt sau | 2 | 2 | **2** |
+| **Tổng** | **46** | **21** | **18 → 20** sau khi thêm 2 lần thử |
+
+> ⚠️ **Con số 54–81% cũ sai vì mẫu số sai theo cả hai chiều.** Nó suy nhãn mặt từ "có MRZ ⇒ mặt sau", nên **đếm thừa** 5 mặt trước Căn cước 2024 vốn không hề in QR, và **đếm thiếu** 2 mặt sau Căn cước 2024 có in QR. Bài học: một tỉ lệ chỉ đáng tin khi mẫu số của nó được gán nhãn độc lập với thứ đang đo.
+
+Vẫn cần Golden Set xác nhận: nhãn thế hệ ở đây đọc bằng mắt trên 46 ảnh, không phải nhãn có kiểm định.
 
 **Phân tích payload:** tách theo `|`, ánh xạ theo vị trí. ⭐ **Bố cục đã xác nhận trên 18 payload thật (2026-08-09)** — đúng như đặc tả gốc:
 
@@ -413,7 +433,7 @@ graph TB
 | `issue_date` | "Ngày, tháng, năm", "Date, month, year" | Mẫu ngày ở nửa dưới mặt sau |
 | `issue_place` | ⭐ *(không có nhãn — chính cơ quan cấp là giá trị)* | Khớp fuzzy với `CỤC TRƯỞNG CỤC CẢNH SÁT…` / `BỘ CÔNG AN`; `IssuePlaceNormalizer` chuẩn hoá tiếp |
 
-⚠️ **`expiry_date` in ở MẶT TRƯỚC**, không phải mặt sau như bảng `anchor_patterns` bản đầu — `Có giá trị đến / Date of expiry` là dòng cuối của mặt trước (y ≈ 0.89).
+⚠️ **`expiry_date` in ở MẶT TRƯỚC trên CCCD 2021**, không phải mặt sau như bảng `anchor_patterns` bản đầu — `Có giá trị đến / Date of expiry` là dòng cuối của mặt trước (y ≈ 0.89). ⭐ **Trên Căn cước 2024 thì ngược lại: nó ở MẶT SAU** ([§7.4.7](#747-hai-thế-hệ-thẻ)). Bảng trên mô tả thế hệ 2021; mỗi thế hệ có `anchor_patterns` riêng trong `document_type`.
 
 ⚠️ **Anchor `Số` (2 ký tự) phải viết đủ thành `Số / No.`** — chuỗi 2 ký tự khớp `SOCIALIST REPUBLIC` ở mức 100 điểm.
 
@@ -427,6 +447,58 @@ graph TB
 ⭐ **Chiến lược ANCHOR đạt độ chính xác NGANG BẰNG ZONE trên ảnh thật** — 83 giá trị so với 84, và cùng tỉ lệ đúng ở cả 3 trường có chân lý (14/14 · 11/15 · 12/12). Ảnh không nắn được phối cảnh gần như **không mất gì**.
 
 ⭐ **`id_number` tìm theo chiều cao chữ, không cần nhãn.** Trên CCCD không gì in to bằng số thẻ, nên chiều cao vùng đủ để nhận ra nó ngay cả khi `Số / No.` không được đọc ra — đo được 14/14 kể cả khi bỏ hẳn vùng nhãn.
+
+---
+
+### 7.4.7. Hai thế hệ thẻ
+
+⭐ **Việt Nam đang lưu hành HAI thế hệ thẻ, và chúng không thay thế nhau được.** Toàn bộ tài liệu này trước 2026-08-10 chỉ mô tả thế hệ 2021. Bộ ảnh mẫu hoá ra chứa cả hai (39 ảnh CCCD 2021, 7 ảnh Căn cước 2024), và điều đó **không lộ ra suốt 3 tuần** vì mọi phép đo đều làm theo tỉ lệ tổng, không soi từng ca lệch.
+
+| | **CCCD gắn chip 2021** (`CCCD_CHIP`) | **Căn cước 2024** (`CAN_CUOC_2024`) |
+|---|---|---|
+| Tiêu đề mặt trước | `CĂN CƯỚC CÔNG DÂN` / `Citizen Identity Card` | `CĂN CƯỚC` / `IDENTITY CARD` |
+| Nhãn số thẻ | `Số / No.` | `Số định danh cá nhân` |
+| Nhãn họ tên | `Họ và tên` | `Họ, chữ đệm và tên khai sinh` |
+| ⭐ **Mã QR** | **MẶT TRƯỚC** | ⭐ **MẶT SAU** |
+| ⭐ **Ngày hết hạn** | **MẶT TRƯỚC** (`Có giá trị đến`) | ⭐ **MẶT SAU** (`Ngày, tháng, năm hết hạn`) |
+| Ngày cấp | mặt sau (`Ngày, tháng, năm`) | mặt sau (`Ngày, tháng, năm cấp`) |
+| Cơ quan cấp | `CỤC TRƯỞNG CỤC CẢNH SÁT QUẢN LÝ HÀNH CHÍNH VỀ TRẬT TỰ XÃ HỘI` | `BỘ CÔNG AN` |
+| Mặt sau còn in | Đặc điểm nhân dạng, vân tay | Nơi cư trú, Nơi đăng ký khai sinh |
+| MRZ | mặt sau, TD1 | **giống hệt** — cùng bố cục, cùng vị trí |
+| Quê quán / Nơi thường trú | mặt trước | *(không in)* |
+
+> ⭐ **Hệ quả kiến trúc: không cần sửa mã trích trường.** `DocumentTypeSpec` vốn mang `zone_map` và `anchor_patterns` riêng cho từng loại giấy tờ (P-06, P-12), nên thêm một thế hệ = **thêm một dòng seed**. Đây là lần đầu cơ chế đó được dùng thật, và nó chịu được.
+
+**`zone_map` Căn cước 2024 — đo trên 7 ảnh thật (5 mặt trước, 2 mặt sau):**
+
+| Trường | Mặt | y quan sát | n |
+|---|---|---|---|
+| `id_number` | trước | 0.457–0.543 | 5 |
+| `full_name` | trước | 0.610–0.675 | 5 |
+| `date_of_birth` | trước | 0.766–0.829 | 5 |
+| `issue_date` | sau | 0.342–0.385 | 2 |
+| `expiry_date` | sau | 0.448–0.496 | 2 |
+| `issue_place` | sau | 0.506–0.564 | 2 |
+| `mrz` | sau | 0.661–0.914 | 2 |
+
+⚠️ **Mọi trường mặt trước nằm THẤP HƠN thế hệ 2021 khoảng 0.06–0.20** vì mặt trước 2024 dành nhiều dòng hơn cho phần đầu. Dùng lại bản đồ 2021 sẽ đặt `full_name` lên số thẻ và `date_of_birth` lên tên.
+
+⚠️ **Hộp mặt sau chỉ dựa trên n=2** — đệm rộng tay hơn mặt trước, và là thứ đầu tiên phải đo lại khi có Golden Set.
+
+⭐ **Anchor `issue_date`/`expiry_date` bị cắt cụt còn phần đuôi phân biệt, và đó là chủ đích.** Cả hai dòng đều mở đầu `Ngày, tháng, năm …`; chấm cụm đầy đủ với nhau ra **83.9** và **83.3** — vượt ngưỡng 75. `_beside_label` trả về nhãn khớp **đầu tiên theo thứ tự đọc**, mà nhãn ngày cấp in trước, nên `expiry_date` sẽ nhận **ngày cấp** và báo đầy tự tin. Dùng `năm cấp` / `năm hết hạn` thì mỗi anchor khớp đúng một dòng, không khớp chéo.
+
+**Kết quả trích trường trên 7 ảnh Căn cước 2024:**
+
+| Trường | Đúng | Ghi chú |
+|---|---|---|
+| `id_number` | **5/5** | |
+| `date_of_birth` | **5/5** | |
+| `full_name` | 4/5 | 1 ca `HỮU` → `HO'U`: **lỗi nhận dạng ký tự**, không phải lỗi toạ độ |
+| `issue_date` | **2/2** | 1 ca cần hỗ trợ ngày **không dấu phân cách** (`04062025`) |
+| `expiry_date` | 1/2 | 1 ca `Không thời hạn` đọc thành `ovong thoi hg` — không cứu được, xem §7.4.6 |
+| `issue_place` | 2/2 định vị đúng | 1 ca chữ hỏng ⇒ `IssuePlaceNormalizer` trả `None` ⇒ ô trống (đúng thiết kế) |
+
+⚠️ **Chưa đo: bộ phân loại mặt trên thẻ 2024.** Mặt sau có **cả** QR (bỏ phiếu FRONT 0.40) lẫn MRZ (bỏ phiếu BACK 0.40) → nhiều khả năng hoà và ra `AMBIGUOUS`. An toàn (bỏ phiếu trắng chứ không đoán bừa) nhưng có thể bắt người dùng chọn mặt thủ công cho mọi thẻ 2024. Đây là việc còn treo, **không phải kết luận**.
 
 ---
 

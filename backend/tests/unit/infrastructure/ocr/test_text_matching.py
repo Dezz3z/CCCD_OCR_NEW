@@ -57,8 +57,11 @@ class TestLengthCoverage:
         assert score == pytest.approx(100.0)
 
     def test_a_garbled_fragment_no_longer_reaches_the_no_expiry_phrase(self):
-        """Transcribed from a real card, where it scored exactly 80."""
-        assert text_matching.similarity("ovong thoi hg", "KHÔNG THỜI HẠN") < 80
+        """Transcribed from a real Căn cước 2024 back, where it measures 69.8 —
+        *below* the 76.2 a person's name reaches against the same phrase."""
+        garbled = text_matching.similarity("ovong thoi hg", "KHÔNG THỜI HẠN")
+        a_name = text_matching.similarity("PHAM THI PHU'O'NG THOA", "KHÔNG THỜI HẠN")
+        assert garbled < a_name < text_matching.BOILERPLATE_THRESHOLD
 
 
 class TestBoilerplate:
@@ -86,6 +89,53 @@ class TestBoilerplate:
         assert text_matching.fold("Nơi thường trú") not in folded
         assert text_matching.fold("Date of expiry") not in folded
         assert text_matching.fold("CĂN CƯỚC CÔNG DÂN") in folded
+
+
+class TestSecondCardGeneration:
+    """⭐ The 2024 `CĂN CƯỚC` renames most of what the 2021 card prints, and the
+    longer 2021 phrases do not reach the shorter 2024 ones."""
+
+    @pytest.mark.parametrize(
+        ("shorter", "longer"),
+        [
+            ("CĂN CƯỚC", "CĂN CƯỚC CÔNG DÂN"),
+            ("IDENTITY CARD", "Citizen Identity Card"),
+        ],
+    )
+    def test_the_2021_phrase_does_not_cover_the_2024_one(self, shorter, longer):
+        """Why the list had to grow rather than rely on what was already there:
+        measured 50.0 and 63.2, both far under the threshold."""
+        assert text_matching.similarity(shorter, longer) < text_matching.BOILERPLATE_THRESHOLD
+
+    @pytest.mark.parametrize(
+        "text",
+        [
+            "CAN CUOC",
+            "IDENTITYCARD",
+            "Södinhdanhca nhan/Personal identificationnumber",
+            "Ho, chu dem va ten khai sinh/Ful name",
+            "Not dang ky khai sint/`Place",
+        ],
+    )
+    def test_recognizes_what_a_2024_card_prints(self, text):
+        """Every string is real recognizer output from a Căn cước 2024."""
+        assert text_matching.is_printed_boilerplate(text) is True
+
+    def test_the_2024_authority_is_left_out_because_it_is_a_value(self):
+        """⭐ Same rule as the 2021 authority: `BỘ CÔNG AN` IS `issue_place`, so
+        listing it would make `find_place` discard the field."""
+        assert text_matching.is_printed_boilerplate("BO CONG AN") is False
+
+    def test_the_2024_top_phrases_joined_the_fingerprint(self):
+        folded = {text_matching.fold(item) for item in text_matching.CARD_TOP_FINGERPRINT}
+        assert text_matching.fold("CĂN CƯỚC") in folded
+        assert text_matching.fold("Nơi đăng ký khai sinh") in folded
+
+    def test_a_phrase_below_the_search_band_stays_out_of_the_fingerprint(self):
+        """⭐ `Số định danh cá nhân` sits at y≈0.40 — outside the top strip the
+        oracle reads — so it would contribute nothing either way up."""
+        folded = {text_matching.fold(item) for item in text_matching.CARD_TOP_FINGERPRINT}
+        assert text_matching.fold("Số định danh cá nhân") not in folded
 
 
 class TestBestMatch:

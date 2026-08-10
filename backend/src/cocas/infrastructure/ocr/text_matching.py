@@ -91,28 +91,53 @@ def matches_any(text: str, anchors: list[str], threshold: float) -> bool:
     return best_match(text, anchors)[1] >= threshold
 
 
-# ⭐ Text every CCCD prints that is never a value read from one. Extraction
-# rejects it: a zone that has drifted by one line otherwise hands
-# `CITIZEN IDENTITY CARD` to fusion as a customer's name.
+# ⭐ Text a card prints that is never a value read from one. Extraction rejects
+# it: a zone that has drifted by one line otherwise hands `CITIZEN IDENTITY
+# CARD` to fusion as a customer's name.
+#
+# ⭐ Covers BOTH generations. The 2024 `CĂN CƯỚC` shortens or renames most of
+# these, and the longer 2021 phrases do not reach them: measured,
+# `CĂN CƯỚC` scores 50.0 against `CĂN CƯỚC CÔNG DÂN` and `IDENTITY CARD` scores
+# 63.2 against `Citizen Identity Card` — both far under the 85 threshold, so
+# before this list grew, a 2024 card's own title was not recognized as printed
+# text at all.
+#
+# ⚠️ Every phrase below was scored against all 774 recognized lines in the
+# sample first; each one matches only titles and labels, never a value. The
+# authority line (`BỘ CÔNG AN`, `CỤC TRƯỞNG CỤC CẢNH SÁT…`) is deliberately
+# absent for the opposite reason: it **is** the `issue_place` value, and listing
+# it here would make `find_place` throw away the only reading of that field.
 PRINTED_ON_EVERY_CARD = [
-    "CĂN CƯỚC CÔNG DÂN",
-    "Citizen Identity Card",
+    # -- shared --
     "CỘNG HÒA XÃ HỘI CHỦ NGHĨA VIỆT NAM",
     "SOCIALIST REPUBLIC OF VIET NAM",
     "Độc lập - Tự do - Hạnh phúc",
     "Independence - Freedom - Happiness",
-    "Đặc điểm nhân dạng",
-    "Personal identification",
-    "Nơi thường trú",
-    "Place of residence",
-    "Quê quán",
-    "Place of origin",
     "Quốc tịch",
     "Nationality",
     "Việt Nam",
     "Full name",
     "Date of birth",
     "Date of expiry",
+    # -- CCCD 2021 --
+    "CĂN CƯỚC CÔNG DÂN",
+    "Citizen Identity Card",
+    "Đặc điểm nhân dạng",
+    "Personal identification",
+    "Nơi thường trú",
+    "Place of residence",
+    "Quê quán",
+    "Place of origin",
+    # -- Căn cước 2024 --
+    "CĂN CƯỚC",
+    "IDENTITY CARD",
+    "Số định danh cá nhân",
+    "Họ, chữ đệm và tên khai sinh",
+    "Nơi cư trú",
+    "Nơi đăng ký khai sinh",
+    "Place of birth",
+    "Ngày, tháng, năm hết hạn",
+    "Date of issue",
 ]
 BOILERPLATE_THRESHOLD = 85.0
 
@@ -127,7 +152,17 @@ BOILERPLATE_THRESHOLD = 85.0
 # fingerprint that appears at both ends of the card fingerprints nothing.
 #
 # Front: the republic header and the card's own title. Back: the identifying
-# marks heading. A flipped back shows its MRZ here, which matches none of them.
+# marks heading (2021) or the birth-registration label (2024). A flipped back
+# shows its MRZ here, which matches none of them.
+#
+# ⭐ The 2024 additions were placement-checked, not assumed. Over the whole
+# sample: `CĂN CƯỚC` appears only at y 0.22–0.28, `IDENTITY CARD` only at
+# y 0.31–0.37, `Nơi đăng ký khai sinh` only at y 0.16 — all in the upper third,
+# so rotating a card moves them out of the band instead of into it.
+#
+# ⚠️ `Số định danh cá nhân` is NOT here despite being printed on every 2024
+# front: it sits at y≈0.40, below the band this reads, so it would contribute
+# nothing either way up.
 CARD_TOP_FINGERPRINT = [
     "CỘNG HÒA XÃ HỘI CHỦ NGHĨA VIỆT NAM",
     "SOCIALIST REPUBLIC OF VIET NAM",
@@ -137,6 +172,10 @@ CARD_TOP_FINGERPRINT = [
     "Citizen Identity Card",
     "Đặc điểm nhân dạng",
     "Personal identification",
+    # -- Căn cước 2024 --
+    "CĂN CƯỚC",
+    "IDENTITY CARD",
+    "Nơi đăng ký khai sinh",
 ]
 
 
