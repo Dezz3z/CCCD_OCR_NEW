@@ -126,7 +126,7 @@ Vi phạm = phải sửa, không phải tranh luận.
 
 **Giai đoạn 1 (Thiết kế): ✅ HOÀN THÀNH** — tài liệu D2.0 đã đóng băng, 0 lỗi kiến trúc đã biết.
 
-**Giai đoạn 2 (Triển khai): P0 ✅ + P1 ✅ HOÀN THÀNH (2026-08-09). P2 (OCR) đang làm — tuần 1 (tiền xử lý ảnh) ✅ + tuần 2 (kênh QR/MRZ) ✅ xong 2026-08-09, tuần 3 (engine + phân loại mặt + trích trường) ✅ xong 2026-08-10, tuần 3b (thế hệ thẻ thứ hai + chốt chỉ tiêu QR) ✅ xong 2026-08-10 — 931 test xanh.**
+**Giai đoạn 2 (Triển khai): P0 ✅ + P1 ✅ HOÀN THÀNH (2026-08-09). P2 (OCR) đang làm — tuần 1 (tiền xử lý ảnh) ✅ + tuần 2 (kênh QR/MRZ) ✅ xong 2026-08-09, tuần 3 (engine + phân loại mặt + trích trường) ✅ xong 2026-08-10, tuần 3b (thế hệ thẻ thứ hai + chốt chỉ tiêu QR) ✅ xong 2026-08-10, ⭐ tuần 4 (chuẩn hoá + hợp nhất + validation) ✅ xong 2026-08-10 — 1096 test xanh. P2 hoàn tất phần mã nguồn; còn lại là Golden Set.**
 Chi tiết đầy đủ từng module — xem [progress.md](progress.md) (cập nhật theo từng module, không rút gọn).
 
 ### Kiến trúc đã triển khai (P0 + P1)
@@ -135,7 +135,7 @@ Backend Python (`backend/src/cocas/`) đã có đủ 3/4 tầng theo Dependency 
 
 | Tầng | Trạng thái |
 |---|---|
-| `domain/` | ✅ Đầy đủ — 10 Value Object · 14 enum · 8 Entity · 5 Domain Service · 18 Port (+ fake/null cho mỗi Port) · cây ngoại lệ |
+| `domain/` | ✅ Đầy đủ — 10 Value Object · 14 enum · 8 Entity · **7 Domain Service** (thêm `FieldNormalizer`, `ConfidenceCalculator` ở tuần 4) · 18 Port (+ fake/null cho mỗi Port) · cây ngoại lệ · ⭐ **`validation/`**: `ValidationEngine` + registry 4 tập quy tắc + **23 quy tắc `V-OCR-*`** (3 tập còn lại đăng ký **rỗng**, không phải thiếu — xem ghi chú trong `engine.py`) |
 | `infrastructure/` | Một phần — **persistence** (19 bảng, 8 migration, 7/8 repository + UnitOfWork; `Contract` repo **hoãn có chủ đích** vì phụ thuộc `RenderContextBuilder` chưa tồn tại tới P3) · **security** (DPAPI thật + AES-256-GCM + blind index) · **logging** (Loguru 3 sink + PII filter 2 lớp) · **system** (`SystemClock`, `Uuid7Generator`) · ⭐ **ocr đầy đủ 7/7 Port**: `preprocessing` (`OpenCvPreprocessor` + 5 biến thể tạo lười + `IOrientationOracle`) · `channels` (`ZxingQrDecoder`, `Td1MrzReader`, `td1.py`) · `engines` (`PaddleOcrAdapter`, `PaddleOrientationOracle`) · `classification` (`HeuristicSideClassifier`) · `extraction` (`ZoneAndAnchorExtractor`, `field_patterns`) · `text_matching.py`. Chưa có: storage, documents, queue |
 | `application/` | ⏳ Rỗng — chờ P3 |
 | `presentation/` | Một phần — middlewares (CORS, security headers, correlation-id, local token) · chưa có router/endpoint nào (64 endpoint là việc P3) |
@@ -162,25 +162,36 @@ Mọi mục dưới đây đã đồng bộ ngược vào `docs/design/`, không
 - ⭐ **4 số kiểm nhóm là cổng chặn, số kiểm tổng là nhân chứng** — bắt buộc cả 5 làm rớt 64% khối đúng. ⚠️ Nhưng khối **đã sửa lỗi** phải được số kiểm tổng xác nhận, nếu không `_repair` sẽ tự chế ra "hợp lệ" từ nhiễu. Và số kiểm tổng **không** làm chứng cho nhóm số tài liệu dòng 1 (cùng pha trọng số).
 - ⭐ **Tín hiệu "đếm vùng text ở 0° vs 180°" không tồn tại** — 17.7 vs 15.8 vùng, conf 0.911 vs 0.904. PaddleOCR lật từng dòng nên thẻ lộn ngược vẫn ra chữ đầy đủ và tự tin, 74% sai. Thay bằng **dấu vân chữ in sẵn ở dải TRÊN** (phải là cụm chỉ có ở phần ba trên — dùng cụm ở đáy thẻ thì gọi sai 6/46).
 - ⭐ **`partial_ratio` không an toàn với chuỗi ngắn** — mảnh 2 ký tự `ON` đạt 100 điểm với `CỘNG HÒA XÃ HỘI…`. Mọi so khớp phải nhân điểm với `min(1, len(text)/len(anchor))`, và phải **bỏ hẳn khoảng trắng** vì bộ nhận dạng nuốt dấu cách có hệ thống.
+- ⭐ **Chuẩn hoá (S9) tồn tại vì HỢP NHẤT, không vì lưu trữ.** Ngày phải ra **ISO `YYYY-MM-DD`** ở cả 3 kênh: QR trả `13031987`, MRZ trả `13031987`, bộ trích trường trả `13/03/1987`. Không quy về một dạng thì quy tắc 3 (thưởng đồng thuận) chết hẳn và quy tắc 4 báo **xung đột giả trên mọi thẻ**. Cùng lý do, `KHÔNG THỜI HẠN` là **hằng số giá trị**, không phải `None` — `None` nghĩa là "không đọc được", khác hẳn.
+- ⭐ **Sửa lỗi ngày chỉ được đổi MỘT chữ số và KHÔNG BAO GIỜ đổi năm.** Quét toàn bộ 8 chữ số như đặc tả gốc biến `29/02/2023` (ca biên **bắt buộc phải bị từ chối** theo §8.11) thành `2028-02-29` — cách đọc tự nhất quán duy nhất trong không gian tìm kiếm. Và cho phép 2 phép thế biến `00/00/1990` thành "duy nhất" `06/06/1990`. Giới hạn 1 phép thế đưa không gian từ 256 xuống 4 ứng viên, tức là "duy nhất" mới có nghĩa.
+- ⭐ **Trong chuẩn hoá tên: SỬA chữ số trước, LỌC ký tự sau.** Lọc trước thì `H0ANG` mất số `0` vì ngoài bộ ký tự và thành `HANG` — một cái tên trông hợp lý nhưng không phải cái in trên thẻ. Thứ tự này lộ ra chỉ khi có test, không lộ khi đọc code.
+- ⭐ **QR + MRZ trên cùng một ảnh không phải thế hoà mà là quan sát quyết định nhất** — trọng số 0.80 → BACK. Coi chúng là hai lá phiếu độc lập thì triệt tiêu đúng 0.40–0.40 và **mọi** cặp Căn cước 2024 ra `AMBIGUOUS` (đo: 0/10). Sau khi sửa: **10/10 đúng**, và **rẻ hơn 26%** vì không còn phải đọc dải tiêu đề.
+- ⭐ **Chỉ 9/23 quy tắc `V-OCR-*` chặn cứng.** Thẻ hết hạn, tuổi bất thường, mã tỉnh lạ đều là 🟡 — chặn vì nghi ngờ là để người dùng không lập được hợp đồng cho khách đang ngồi trước mặt (P-08). Và trường **trống** chỉ do `V-OCR-017` báo: các quy tắc hình dạng (003/005/006/007/016) chỉ chạy khi trường **có giá trị nhưng sai dạng**, nếu không một ô hỏng sẽ nhận hai lỗi.
 
 ### Ràng buộc cần biết khi làm tiếp P2
 
 0. ⭐ **Model OCR không nằm trong Git.** Chạy `python backend/scripts/fetch_ocr_models.py` một lần để tải 16 MB về `backend/resources/ocr-models/`. Thiếu nó thì `PaddleOcrAdapter.warm_up()` **ném lỗi chứ không tải** (P-01), và các test trong `tests/security/test_ocr_offline.py` tự bỏ qua.
 
-1. ⭐ **Vẫn thiếu Golden Set 200 cặp ảnh CCCD đã gán nhãn và 2 file `.docx` thật.** Đây giờ là thứ **duy nhất** chặn việc chốt KPI P2, và là thứ duy nhất đo được **False Confidence ≤0.5%** — chỉ tiêu chặn phát hành, tới giờ **chưa đo được lần nào**.
+1. ⭐ **Vẫn thiếu Golden Set 200 cặp ảnh CCCD đã gán nhãn và 2 file `.docx` thật.** Đây giờ là thứ **duy nhất** chặn việc chốt KPI P2.
    - **MRZ ≥75%: đã đo 22/22 = 100%** (2026-08-10), 0 lần phải sửa lỗi, 2/2 ảnh có cả hai kênh cho số CCCD khớp nhau.
    - **QR ≥90%: đã đo 20/21 = 95.2%** (2026-08-10) trên các ảnh **thật sự có in QR**.
+   - **Phân loại mặt ≥99%: đã đo 22/22 cặp** (12 cặp 2021 + 10 cặp 2024), đưa vào **sai thứ tự** có chủ đích.
+   - ⭐ **False Confidence ≤0.5%: đã đo được 0/16 = 0.0%** (2026-08-10) — lần đầu tiên chỉ số chặn phát hành này không còn là ô trống. ⚠️ Proxy dùng QR/MRZ **làm nhãn** cho các trường OCR cũng đọc được, nên nó **chỉ phủ phần giao** — không nói gì về `issue_place`. Golden Set vẫn cần cho con số đầy đủ.
    - ⭐ **Nhãn của Golden Set phải có cả trường "thế hệ thẻ"** — xem ràng buộc 7.
-   - Đo lại bất cứ lúc nào: `python backend/scripts/verify_qr_mrz.py "<thư mục ảnh>"`.
+   - Đo lại bất cứ lúc nào: `python backend/scripts/verify_qr_mrz.py "<thư mục ảnh>"` (kênh) · `verify_side_classification.py` (phân loại mặt) · ⭐ `verify_extraction.py` (toàn chuỗi S3→S11).
 2. **PyInstaller + asyncpg**: `hiddenimports = ["asyncpg.pgproto"]` không đủ — asyncpg nạp submodule Cython biên dịch sẵn không thấy được qua static analysis. Dùng `collect_submodules("asyncpg")` (đã áp dụng trong `build.spec`).
 3. **`console=False` (bản production) sẽ crash lúc khởi động** — `loguru_config.configure_logging()`'s console sink gọi `logger.add(sys.stderr, ...)`, và `sys.stderr` là `None` dưới chế độ windowed của PyInstaller. Cố ý để lại cho P5/P6 (khi Supervisor đọc log qua file), **không phải bug đã sửa**.
 4. ✅ ~~Sửa xoay 180° cho mặt trước~~ — **xong tuần 3.** ⚠️ Nhưng **không** bằng model `cls` như dự kiến: tín hiệu `cls`/đếm vùng text không phân biệt được hai chiều (xem quyết định ở trên). Dùng dấu vân chữ in sẵn ở dải trên; đo 44/46 đúng cả hai chiều, **0 sai**.
 5. Kích thước gói `onedir` đo thật ở bản trial ~505 MB (tài liệu ước tính 180 MB cho bản cuối) — nay cộng thêm **16 MB** `resources/ocr-models` (nhẹ hơn ước tính 850 MB rất nhiều vì model PP-OCRv3 mobile nhỏ). Vẫn theo dõi ngân sách 1.5 GB (§14.5 sổ rủi ro).
 6. ⭐⭐ **CÓ HAI THẾ HỆ THẺ, và bộ mẫu chứa cả hai.** Căn cước 2024 (`CAN_CUOC_2024`) in **QR ở mặt SAU** và **ngày hết hạn ở mặt SAU** — ngược với CCCD gắn chip 2021 (`CCCD_CHIP`). Tiêu đề `CĂN CƯỚC`, nhãn số thẻ `Số định danh cá nhân`, cơ quan cấp `BỘ CÔNG AN`. Mỗi thế hệ là **một dòng `document_type` riêng** với `zone_map`/`anchor_patterns` riêng — không có mã trích trường nào biết đến thế hệ. Chi tiết: `07-module-ocr.md §7.4.7`.
    - ⚠️ Điều này ẩn suốt 3 tuần vì mọi phép đo đều làm theo **tỉ lệ tổng**. Khi một tỉ lệ trông thấp, hãy mở từng ca lệch ra xem trước khi kết luận kênh yếu — lần này 19 trong 23 điểm phần trăm hụt là do **mẫu số sai**, không phải do bộ giải mã.
-   - ⚠️ **Chưa đo:** phân loại mặt trên thẻ 2024 — mặt sau có cả QR (phiếu FRONT) lẫn MRZ (phiếu BACK) nên nhiều khả năng hoà → `AMBIGUOUS`.
+   - ✅ **Đã đo và đã sửa (2026-08-10):** phân loại mặt trên thẻ 2024 từng ra `AMBIGUOUS` **0/10 cặp** vì QR và MRZ triệt tiêu nhau. Sửa bằng tín hiệu tổ hợp QR+MRZ → BACK (0.80): **10/10 đúng**, đối chứng 2021 giữ 12/12. Đo lại: `python backend/scripts/verify_side_classification.py "<thư mục ảnh>"`.
 7. ⚠️ **Anchor ngắn vẫn là cái bẫy chưa hết.** Sau `Số` (2 ký tự, khớp `SOCIALIST REPUBLIC` 100 điểm) là `Số:` (3 ký tự, **80.0**) — gỡ 2026-08-10. Và hai nhãn chia nhau tiền tố dài (`Ngày, tháng, năm cấp` / `…hết hạn`) khớp chéo ở 83.9/83.3. Mọi anchor mới **phải** được chấm với dòng tiêu đề thật trước khi gieo; `tests/unit/infrastructure/ocr/extraction/test_doctype_seeds.py` làm việc đó tự động.
-8. ⚠️ **Ngân sách p95 ≤ 9 s cần theo dõi ở P3.** Đo thật: `recognize()` toàn thẻ 2.7 s, `recognize_region()` một dải 1.1–1.2 s (**không** rẻ theo tỉ lệ diện tích — bộ dò chuẩn hoá theo cạnh dài). Quy trình P3 nên nhận dạng toàn thẻ **một lần** rồi dùng lại các vùng, thay vì nhiều lượt đọc dải.
+8. 🔴 **Ngân sách p95 ≤ 9 s ĐANG BỊ VƯỢT — đo toàn chuỗi S3→S11 được 7.7 s/ảnh trung bình, p95 17.5 s/ảnh**, trong khi ngân sách là 9 s cho **cả cặp**. Máy đo: **4 nhân / 4 GB RAM**.
+   - ⭐ **Nhận dạng toàn thẻ hai lượt đắt gấp 5–7 lần chứ không phải gấp đôi** trên máy ít RAM, và gây `OcrTimeoutError` thật. Gộp còn **một lượt** (thế hệ thẻ suy từ chính các vùng text đó) đã cắt 28–45 s xuống 7.7 s. Quy trình P3 **bắt buộc** làm vậy — đây không phải tối ưu vặt.
+   - 🎯 Ba đòn bẩy còn nguyên cho P3, **không cái nào đụng tới độ chính xác**: (1) bỏ hẳn lượt OCR khi QR đã cho đủ trường (QR thắng 19/20 ở 4 trường); (2) xử lý hai ảnh **song song** (ngân sách tính cho cặp); (3) hạ `target_long_edge` rồi đo lại.
+   - ⚠️ Máy đích thực tế **chưa biết** — đây là biến số lớn nhất chưa nắm được của chỉ tiêu này.
+9. ⚠️ **Đừng chạy pytest song song với script PaddleOCR** trên máy này — đã gây `OcrTimeoutError` giả hai lần trong một phiên (4 nhân / 4 GB).
 
 ### Quy trình làm việc Giai đoạn 2
 

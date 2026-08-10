@@ -270,13 +270,28 @@ Hai chiến lược chạy song song, lấy kết quả có confidence cao hơn 
 
 #### Chuẩn hoá các trường khác
 
-| Trường | Quy tắc |
+| Trường | Quy tắc | Dạng chuẩn |
+|---|---|---|
+| Họ và tên | ⭐ **NFC trước, UPPERCASE sau** → thu gọn khoảng trắng → sửa nhầm OCR (`0→O`, `1→I`, `5→S`, `8→B` chỉ khi nằm giữa chữ cái) → loại ký tự ngoài tập tiếng Việt | `NGUYỄN VĂN AN` |
+| Số CCCD | Chỉ giữ chữ số → sửa `O→0`, `I,l→1`, `S→5`, `B→8`, `Z→2`, `G→6`, `D→0` → phải còn đúng 12 | `001199012345` |
+| Ngày | Chấp nhận `dd/mm/yyyy`, `dd-mm-yyyy`, `dd.mm.yyyy`, `ddmmyyyy` → đối tượng `date`. Sửa nhầm `1↔7`, `3↔8`, `0↔6` (ràng buộc bên dưới) | ⭐ **ISO `YYYY-MM-DD`** |
+| Ngày hết hạn | Khớp "KHONG THOI HAN"/"KHÔNG THỜI HẠN" (sau khi bỏ dấu) → giữ **hằng số** `KHÔNG THỜI HẠN` làm giá trị; S12 mới đổi thành `no_expiry = True`, `expiry_date = NULL` | `KHÔNG THỜI HẠN` |
+| STK chứng khoán | Bỏ khoảng trắng/gạch → UPPERCASE → nếu chỉ 6 chữ số thì tự thêm tiền tố `008C` | `008C123456` |
+
+⭐ **Vì sao phải có "dạng chuẩn": S10 so sánh giá trị bằng `==`.** QR trả `13031987`, MRZ trả `13031987`, bộ trích trường trả `13/03/1987` — ba cách viết của **một** ngày. Đưa nguyên vào hợp nhất thì quy tắc 3 (thưởng đồng thuận) không bao giờ kích hoạt, còn quy tắc 4 (phát hiện xung đột) kích hoạt trên **mọi** thẻ: hai nguồn tin cậy cao "mâu thuẫn" về một giá trị mà thực ra chúng đồng ý. Chuẩn hoá là bước biến sự đồng thuận thành thứ mà phép so sánh chuỗi nhìn thấy được.
+
+⭐ **`KHÔNG THỜI HẠN` là một giá trị, không phải ô trống.** Nếu S9 trả `None` thì hợp nhất không phân biệt được "thẻ ghi không thời hạn" với "không đọc được ngày hết hạn" — hai tình huống dẫn tới hai hành vi UI khác hẳn nhau.
+
+⭐ **Ràng buộc sửa lỗi ngày — chặt hơn bản D2.0 gốc, sau khi đo (2026-08-10):**
+
+| Ràng buộc | Vì sao |
 |---|---|
-| Họ và tên | ⭐ **NFC trước, UPPERCASE sau** → thu gọn khoảng trắng → sửa nhầm OCR (`0→O`, `1→I`, `5→S`, `8→B` chỉ khi nằm giữa chữ cái) → loại ký tự ngoài tập tiếng Việt |
-| Số CCCD | Chỉ giữ chữ số → sửa `O→0`, `I,l→1`, `S→5`, `B→8`, `Z→2`, `G→6`, `D→0` → phải còn đúng 12 |
-| Ngày | Chấp nhận `dd/mm/yyyy`, `dd-mm-yyyy`, `dd.mm.yyyy`, `ddmmyyyy` → đối tượng `date`. Sửa nhầm `1↔7`, `3↔8`, `0↔6`: thử biến thể, chọn ngày hợp lệ duy nhất (conf 0.75) |
-| Ngày hết hạn | Fuzzy khớp "KHONG THOI HAN"/"KHÔNG THỜI HẠN" → `no_expiry = True`, `expiry_date = NULL` |
-| STK chứng khoán | Bỏ khoảng trắng/gạch → UPPERCASE → nếu chỉ 6 chữ số thì tự thêm tiền tố `008C` |
+| Chỉ chạy khi chuỗi **đã trượt** phép phân tích thông thường | Chạy trên ngày vốn đã hợp lệ thì `01/01/1990` sinh thêm `07/01/1990` và `01/07/1990`, đều hợp lệ ⇒ quy tắc "ngày hợp lệ duy nhất" sẽ **loại chính giá trị in trên thẻ** |
+| ⭐ **Không bao giờ đổi chữ số của NĂM** | Quét cả 8 chữ số biến `29/02/2023` — ngày không tồn tại, và là **ca biên bắt buộc phải bị từ chối** theo §8.11 — thành `2028-02-29`, cách đọc tự nhất quán duy nhất trong toàn bộ không gian. Một "phép sửa" dời năm sinh đi 5 năm để lịch khớp thì không phải là phép sửa |
+| ⭐ **Nhiều nhất MỘT chữ số được đổi** | Một glyph hỏng là kiểu lỗi thường gặp của bộ nhận dạng; hai lỗi trong cùng 8 chữ số thì hiếm, mà cho phép sẽ khiến `00/00/1990` "duy nhất" thành `06/06/1990`. Giới hạn 1 phép thế làm cho "duy nhất" có ý nghĩa: tối đa **4** ứng viên thay vì 256 |
+| Kết quả sửa được: conf **≤ 0.75** | Dưới ngưỡng review 0.85 ⇒ luôn vào diện người dùng kiểm tra |
+
+> Cả hai ràng buộc thêm đều **không mất phép sửa nào đã đo được**: `date_of_birth` 12/12 và `issue_date` 2/2 trên bộ ảnh thật đọc đúng mà bước sửa lỗi chưa từng phải chạy (§7.4.7).
 
 ---
 
@@ -289,9 +304,20 @@ Hai chiến lược chạy song song, lấy kết quả có confidence cao hơn 
 | 3 | **Thưởng đồng thuận:** ≥ 2 nguồn cùng giá trị → `+0.10` (trần 1.00), `agreement = true` |
 | 4 | **Phát hiện xung đột:** 2 nguồn ≥ 0.90 cho giá trị khác nhau → chọn nguồn ưu tiên cao hơn nhưng **hạ conf xuống 0.50** + cờ `SOURCE_CONFLICT`. UI hiện cả hai để người dùng chọn |
 | 5 | ⭐ **Kiểm tra khớp thẻ:** số CCCD từ QR ≠ từ MRZ → cờ `CARD_MISMATCH` → **chặn cứng** tạo Customer |
-| 6 | ⭐ **Suy luận từ mã số:** 3 số đầu = mã tỉnh · số thứ 4 = giới tính + thế kỷ · số 5–6 = 2 số cuối năm sinh → **đối chiếu chéo** với ngày sinh và giới tính đã trích. Mâu thuẫn → hạ conf + cờ |
-| 7 | **Tính điểm tổng** có trọng số: `id_number` 0.30 · `full_name` 0.25 · `date_of_birth` 0.15 · `issue_date` 0.10 · `expiry_date` 0.10 · `issue_place` 0.10 |
+| 6 | ⭐ **Suy luận từ mã số:** 3 số đầu = mã tỉnh · số thứ 4 = giới tính + thế kỷ · số 5–6 = 2 số cuối năm sinh → **đối chiếu chéo** với ngày sinh đã trích. Mâu thuẫn → hạ conf xuống 0.50 + cờ `ID_INCONSISTENT`. ⚠️ **Phần giới tính KHÔNG làm ở đây** — giới tính không nằm trong 6 `FieldKey` nên hợp nhất không có gì để đối chiếu; việc đó là của `V-OCR-022`, nơi có giá trị từ biểu mẫu |
+| 7 | **Tính điểm tổng** có trọng số: `id_number` 0.30 · `full_name` 0.25 · `date_of_birth` 0.15 · `issue_date` 0.10 · `expiry_date` 0.10 · `issue_place` 0.10 — trường không đọc được tính **0**, không loại khỏi mẫu số |
 | 8 | Gắn cờ `needs_review` khi `confidence < ocr.review_threshold` (mặc định 0.85) |
+
+⭐ **Bảng "hệ số trường" của quy tắc 2** — gieo từ số đo tuần 3 trên ảnh thật (§7.4.6, §7.4.7), sửa được qua `system_setting` mà không cần phát hành lại:
+
+| Trường | Hệ số OCR | Căn cứ |
+|---|---|---|
+| `id_number` | 1.00 | 14/14. Dãy 12 chữ số tự kiểm: đọc sai một chữ số thường vỡ độ dài, và S9 loại thẳng thứ không đúng 12 |
+| `full_name` | **0.75** | 11/15 khớp chính xác — và các ca trượt mang tính **hệ thống**: model `latin` không có đầu ra cho 38/42 chữ hoa có dấu (§7.4.5), nên tên từ OCR thường **đúng chữ nhưng mất dấu** |
+| `date_of_birth` · `issue_date` · `expiry_date` | 0.95 | 12/12 và 2/2. S9 chỉ nhận ngày có thật nên loại phần lớn lỗi đọc; nhánh 8 chữ số không dấu phân cách là bằng chứng yếu hơn |
+| `issue_place` | 1.00 | **Có chủ đích, không phải thiếu sót** — `IssuePlaceNormalizer` đã chặn trần giá trị này theo tầng khớp ở S9, nhân thêm hệ số ở đây là tính cùng một điều không chắc chắn **hai lần** |
+
+⚠️ Mẫu nhỏ. Golden Set là thứ biến các con số này thành hiệu chuẩn thật.
 
 **Cấu trúc mã CCCD 12 số:**
 

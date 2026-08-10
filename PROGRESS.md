@@ -11,7 +11,7 @@
 ```
 P0: Chuẩn bị        [====] ✅ DONE (2026-08-11)
 P1: Nền tảng        [====] ✅ DONE (2026-08-09)
-P2: OCR Module      [=   ] 🔄 IN PROGRESS (tuần 1/4 xong) ⭐ Critical path
+P2: OCR Module      [====] 🔄 MÃ NGUỒN XONG (4/4 tuần) — chờ Golden Set ⭐ Critical path
 P3: Nghiệp vụ       [    ] ⏳ TODO (3 tuần)
 P4: Giao diện       [    ] ⏳ TODO (3 tuần)
 P5: Desktop         [    ] ⏳ TODO (2 tuần)
@@ -146,8 +146,8 @@ P7: Nghiệm thu      [    ] ⏳ TODO (1 tuần)
 ---
 
 ### 🔄 P2 — Module OCR (4 tuần) ⭐ CRITICAL PATH
-**Status:** IN PROGRESS — tuần 1 + tuần 2 xong 2026-08-09  
-**Est. Completion:** 2026-09-23
+**Status:** ⭐ **4/4 tuần mã nguồn XONG 2026-08-10** — còn lại là Golden Set (dữ liệu, không phải mã)  
+**Est. Completion:** 2026-09-23 (theo kế hoạch) — thực tế phần mã nguồn xong sớm
 
 **Deliverables:**
 - [x] **Tuần 1: Tiền xử lý ảnh (9 phép biến đổi, tạo lười)** — `infrastructure/ocr/preprocessing/`
@@ -175,7 +175,35 @@ P7: Nghiệm thu      [    ] ⏳ TODO (1 tuần)
   - ⭐ **Chỉ tiêu QR ≥90% ĐÃ ĐẠT: 20/21 = 95.2%** (từ 18/21). Thêm 2 lần thử đọc **kênh Blue** — hoa văn guilloche lam ngọc của thẻ biến mất ở kênh này. Không mất thẻ nào, +43 ms/ảnh
   - ⭐ **Con số 66.7% cũ sai vì mẫu số sai**, không phải vì kênh yếu: nó suy nhãn mặt từ "có MRZ ⇒ mặt sau", nên đếm thừa 5 mặt trước 2024 (vốn không in QR) và đếm thiếu 2 mặt sau 2024 (có in QR). `verify_qr_mrz.py` nay gán nhãn thế hệ bằng **chữ in trên thẻ**
   - **931 test xanh** (+46), ruff sạch, `mypy --strict` 0 lỗi, `mypy` gói OCR 0 lỗi, import-linter 4/4
-- [ ] Tuần 4: Chuẩn hoá + Fusion + Validation
+- [x] **Tuần 4: Chuẩn hoá + Fusion + Validation** — hoàn tất 2026-08-10
+  - ⭐ **`FieldNormalizer`** (Domain Service D1, S9) — dạng chuẩn duy nhất cho từng trường: ngày ra **ISO `YYYY-MM-DD`**, `KHÔNG THỜI HẠN` là **hằng số giá trị** chứ không phải `None`, tên NFC-UPPER, số CCCD 12 chữ số. Không bao giờ ném ngoại lệ; giá trị chuẩn hoá hỏng bị **loại** chứ không cho lọt thô
+  - ⭐ **`FieldFusionService` đủ 8 quy tắc** (trước đó mới có 4): thêm hệ số trường cho kênh OCR (quy tắc 2), thưởng đồng thuận đúng **+0.10** kèm cờ `agreement`, xung đột chỉ tính khi **cả hai nguồn ≥ 0.90** rồi hạ về 0.50, và ⭐ **quy tắc 6 — suy luận từ mã số** (mã tỉnh · thế kỷ · 2 số cuối năm sinh) đối chiếu chéo với ngày sinh → cờ `ID_INCONSISTENT`
+  - **`ConfidenceCalculator`** (D4) — điểm tổng có trọng số; trường không đọc được tính **0** chứ không loại khỏi mẫu số
+  - ⭐ **`domain/validation/`** — `ValidationEngine` + registry 4 tập quy tắc + **đủ 23 quy tắc `V-OCR-*`**. Quy tắc là **đối tượng trong registry**, engine không biết quy tắc nào tồn tại (§12.7). 3 tập của P3 đăng ký **rỗng chứ không thiếu**: tập rỗng trả báo cáo hợp lệ, tập thiếu ném lỗi — hai câu trả lời khác nhau cho "hợp đồng này sinh được chưa"
+  - ⭐ **Sửa phân loại mặt cho Căn cước 2024** (mục treo cuối tuần 3b): **0/10 → 10/10 cặp**, xem phát hiện #31
+  - `scripts/verify_side_classification.py` + `scripts/verify_extraction.py` — hai công cụ đo mới, dùng lại nguyên vẹn khi có Golden Set
+  - **1096 test toàn dự án xanh** (+165), ruff sạch, `mypy --strict` domain+application 0 lỗi, import-linter 4/4. Độ phủ mã mới: fusion 100% · calculator 100% · validation engine 100% · `ocr_rules` 99% · normalizer 98%
+
+**⭐ Đo toàn chuỗi S3→S11 trên 46 ảnh thật (2026-08-10, `scripts/verify_extraction.py`)**
+
+Thẻ được **ghép từ chính dữ liệu, không từ tên file**: mọi ảnh của một thẻ mang cùng số CCCD (mặt trước in trong QR, mặt sau in trong MRZ), nên khớp theo số đó ghép được **20 thẻ** (17 thẻ đủ hai mặt) từ 46 ảnh; 6 ảnh không kênh chính xác nào đọc được thì để riêng thay vì ghép mò.
+
+| Trường | Đọc được | Độ tin cậy TB | Cần review | Nguồn thắng |
+|---|---|---|---|---|
+| `id_number` | **20/20** | 1.00 | 0 | QR 19 · MRZ 1 |
+| `date_of_birth` | **20/20** | 1.00 | 0 | QR 19 · MRZ 1 |
+| `issue_date` | **20/20** | 0.99 | 0 | QR 19 · OCR 1 |
+| `expiry_date` | **20/20** | 0.98 | 0 | **MRZ 20** |
+| `full_name` | 19/20 | 1.00 | 0 | QR 19 |
+| ⚠️ `issue_place` | **12/20** | **0.60** | **12** | OCR 12 |
+
+- ⭐⭐ **False Confidence đo được lần đầu tiên: 0/16 = 0.0%** (chỉ tiêu ≤0.5%, **chặn phát hành**). Proxy: QR/MRZ là kênh chính xác nên chúng làm **nhãn** cho các trường mà OCR cũng đọc được; một trường OCR ≥0.95 mà lệch nhãn là một ca False Confidence. Mẫu số nhỏ (16) và chỉ phủ phần giao — **không thay thế được Golden Set**, nhưng đây là lần đầu chỉ số này không còn là ô trống.
+- ⭐ **Hệ số trường của quy tắc 2 làm đúng việc của nó.** OCR khớp kênh chính xác **33/50 = 66%** — 17 ca lệch gần như toàn bộ là `full_name` mất dấu (§7.4.5). Không ca lệch nào lọt vào mức ≥0.95 **sau khi nhân hệ số 0.75**, tức là chính hệ số này giữ False Confidence ở 0.
+- ⭐ **`expiry_date` 20/20 đến từ MRZ, không kênh nào khác đóng góp** — xác nhận đúng điều §7.4.4 gọi MRZ là "trường không kênh nào khác cung cấp".
+- ⚠️ **`issue_place` là điểm yếu duy nhất còn lại: 12/20, và cả 12 đều ở tầng 4 (từ khoá, conf 0.60) nên đều phải review.** Tầng 1 (khớp chính xác sau khi bỏ dấu) không lần nào kích hoạt vì bộ nhận dạng trả `BO C0NG AI` chứ không trả `BO CONG AN`. ⚠️ **Một phần là hiện vật của phép đo**: script gieo đúng 2 dòng alias tầng 4, trong khi bản seed thật có 16 dòng gồm cả alias tầng 2 — con số thật sẽ khá hơn, nhưng **chưa đo**.
+- **Validation:** 10/20 thẻ bị chặn — `V-OCR-017` ×9 (thiếu `issue_place`), `V-OCR-001` ×3 (thẻ chỉ có một mặt trong bộ mẫu), `V-OCR-002` ×2 (hai ảnh cùng mặt), `V-OCR-018` ×12 cảnh báo (đúng 12 giá trị `issue_place` ở 0.60). Mọi nguyên nhân đều truy được về một trường cụ thể, không có lỗi "không rõ vì sao".
+- **Điểm tổng:** trung bình 0.92 · thấp nhất 0.68 · cao nhất 0.96.
+- 🔴 **Thời gian: trung bình 7.7 s/ảnh, p95 17.5 s/ảnh** trên máy dev **4 nhân / 4 GB RAM** — ngân sách là **9 s cho cả CẶP**. Xem rủi ro p95 bên dưới.
 
 **Phát hiện khi chạy trên ảnh thật (đã sửa, đã đồng bộ vào `07-module-ocr.md` §7.4.1):**
 1. ⭐ **Dò contour theo đặc tả gốc chỉ nắn được 4/46 ảnh.** Hai nguyên nhân, đều là trường hợp phổ biến chứ không phải ngoại lệ: (a) ảnh chụp bằng điện thoại cầm dọc → thẻ nằm ngang trong khung dọc, tỉ lệ quad ra 1/1.585 = 0.63 nên bị chốt tỉ lệ loại thẳng; (b) ảnh đã crop sát thẻ → không còn đường viền nào để dò. Sửa: đổi nhãn 4 đỉnh về khổ ngang, và lấy chính 4 góc ảnh làm quad khi tỉ lệ khung ảnh nằm trong dải cho phép. Sau khi sửa: **44/46**.
@@ -235,33 +263,54 @@ P7: Nghiệm thu      [    ] ⏳ TODO (1 tuần)
 26. **`find_date` phải chấp nhận ngày không có dấu phân cách.** Thẻ thật in `04/06/2025` nhưng bộ nhận dạng trả `04062025`, và trường ngày cấp mất hẳn. Thêm mẫu 8 chữ số đứng riêng + ràng buộc năm 1900–2100, chỉ thử sau khi mẫu có dấu phân cách trượt. Đo A/B trên 774 dòng: **0 mất, 1 nhận thêm** — thuần cộng thêm.
 27. **`find_place` từ chối mọi chuỗi có chữ số là chặt gấp đôi.** `BỘ CÔNG AN` được đọc thành `BO C0NG AI`, và đúng một chữ số `0` vứt bỏ cả dòng. Điều quy tắc này thực sự cần làm là phân biệt trường nơi cấp với ngày/số in cạnh nó, nên đổi sang tìm **run** chữ số (`\d{2}`): số in luôn có run, chữ bị đọc nhầm thì không.
 
-**Milestones:**
-- M2: 2 ảnh CCCD thật → 6 trường đúng (chạy offline)
+**Phát hiện tuần 4 (đã đồng bộ vào `03` §S9/§S10, `07` §7.4.2/§7.4.7/§7.5.0/§7.5.2, `08` §8.4, `12` §12.6a/§12.6b):**
 
-**KPIs:**
-- Field Accuracy (có QR/MRZ): ≥99%
-- Field Accuracy (OCR): ≥95%
-- Full-Card Accuracy: ≥92%
-- **False Confidence: ≤0.5%** ⭐
-- MRZ checksum: ≥75%
-- QR read rate: ≥90%
-- p95 latency: ≤9s
+28. ⭐ **Chuẩn hoá không phải bước "làm đẹp dữ liệu" — không có nó thì hợp nhất hỏng theo hai chiều cùng lúc.** Ba kênh cho ba cách viết của một ngày (`13031987` từ QR, `13031987` từ MRZ, `13/03/1987` từ bộ trích trường). Đưa nguyên vào `FieldFusionService` thì quy tắc 3 (thưởng đồng thuận) **không bao giờ** kích hoạt, còn quy tắc 4 (phát hiện xung đột) kích hoạt trên **mọi** thẻ — hai nguồn tin cậy cao "mâu thuẫn" về một giá trị mà thật ra chúng đồng ý. Đây là lý do S9 phải đứng trước S10, chứ không phải vì cột CSDL cần định dạng đẹp.
+29. ⭐ **Bước sửa lỗi ngày theo đặc tả gốc BỊA RA giá trị mới — bắt được nhờ chính ca biên mà §8.11 bắt buộc phải có.** "Thử biến thể, chọn ngày hợp lệ duy nhất" quét cả 8 chữ số biến `29/02/2023` (ngày **không tồn tại**, và §8.11 liệt kê nó như ca **phải bị từ chối**) thành `2028-02-29` — cách đọc tự nhất quán duy nhất trong toàn bộ không gian 256 biến thể. Một phép sửa dời năm sinh đi 5 năm để lịch khớp thì không phải phép sửa. Siết hai ràng buộc: **không bao giờ đổi chữ số của năm** và **nhiều nhất một chữ số được đổi** (`00/00/1990` cũng "duy nhất" thành `06/06/1990` nếu cho phép hai). Không gian còn ≤ 4 ứng viên, và "duy nhất" mới có nghĩa. ⚠️ Cả hai ràng buộc **không mất phép sửa nào đã đo được** — `date_of_birth` 12/12 và `issue_date` 2/2 đọc đúng mà bước này chưa từng phải chạy.
+30. ⭐ **Trong chuẩn hoá tên, THỨ TỰ là thứ mang tải: sửa chữ số trước, lọc ký tự sau.** Lọc trước thì `H0ANG` mất chữ số `0` (ngoài bộ ký tự tiếng Việt) và thành **`HANG`** — một cái tên trông hoàn toàn hợp lý nhưng không phải cái in trên thẻ. §03 S9 vốn ghi đúng thứ tự; hiện thực đầu tiên vẫn làm ngược, và điều đó **chỉ lộ ra khi viết test**, không lộ khi đọc code.
+31. ⭐⭐ **QR + MRZ trên cùng một ảnh KHÔNG phải thế hoà — đó là quan sát quyết định nhất mà bộ phân loại mặt có được.** Đo đúng mục treo cuối tuần 3b: coi hai tín hiệu là hai lá phiếu độc lập thì chúng triệt tiêu đúng 0.40–0.40 và **0/10 cặp Căn cước 2024** ra `RESOLVED` (toàn bộ `AMBIGUOUS`), trong khi 12 cặp CCCD 2021 đối chứng đạt 12/12. Nhưng **không thế hệ nào in cả hai lên cùng một mặt, trừ đúng mặt sau của thẻ 2024**, nên *tổ hợp* nhận diện mặt sau mạnh hơn từng tín hiệu riêng → một tín hiệu độc lập trọng số **0.80**. Kết quả: **10/10 đúng, 0 sai**, và **rẻ hơn 26%** vì không còn phải đọc dải tiêu đề để phá thế hoà.
+    - ⚠️ Cách sửa "đúng bài" hơn — đưa anchor mặt trước/sau vào `document_type.anchor_patterns` theo P-06 — **vướng con gà–quả trứng**: S4 chạy *trước* khi biết thế hệ thẻ. Tín hiệu tổ hợp gỡ được nút thắt mà không phải trả lời câu hỏi đó; câu hỏi vẫn để ngỏ cho P3.
+    - ⚠️ Phép đo cố ý đưa ảnh vào **sai thứ tự** (ảnh A là mặt sau). Một bộ phân loại mặc định "A là mặt trước" sẽ đạt 100% trên đầu vào đúng thứ tự và 0% ở đây — mà sai thứ tự mới đúng là tình huống ALT-01 tồn tại để xử lý.
+32. ⭐ **Nhận dạng toàn thẻ HAI lượt không đắt gấp đôi mà đắt gấp 5–7 lần, và nó gây `OcrTimeoutError` thật.** Bản đầu của `verify_extraction.py` gọi `recognize()` một lượt cho phát hiện thế hệ thẻ và một lượt cho trích trường: **12,8 → 27,9 → 44,6 s/ảnh** và bắt đầu vượt ngân sách 20 s của adapter. Gộp còn **một lượt** rồi suy thế hệ từ chính các vùng text đó: **7,7 s/ảnh trung bình, 0 timeout**. Nguyên nhân là máy dev chỉ có **4 nhân / 4 GB RAM** nên chi phí không tuyến tính theo số lượt. Đây chính là khuyến nghị §7.4.6 phát hiện #20 dành cho P3, giờ có số đo chống lưng — và nó nói rằng khuyến nghị đó **không phải tối ưu vặt mà là điều kiện để chạy được**.
+33. ⭐ **Ghép hai mặt của một thẻ không cần nhãn: dùng chính số CCCD.** Mặt trước in nó trong QR, mặt sau in nó trong MRZ, nên khớp theo số đó ghép được 20 thẻ (17 đủ hai mặt) từ 46 ảnh **không có nhãn nào**. Thủ thuật này cũng là thứ làm cho phép đo False Confidence khả thi trước khi có Golden Set — và nó dùng lại được y nguyên khi có Golden Set để **kiểm tra chéo nhãn thủ công**.
+
+**Milestones:**
+- [x] ⭐ **M2 — ĐẠT 2026-08-10, vượt phạm vi đặt ra.** Mốc yêu cầu "2 ảnh CCCD thật → 6 trường đúng, chạy offline". Đo được: **20 thẻ thật** qua đủ chuỗi S3→S11 (tiền xử lý → QR/MRZ/OCR → trích trường → chuẩn hoá → hợp nhất → validation), **5/6 trường đọc 100%**, độ tin cậy tổng trung bình 0.92, hoàn toàn cục bộ (P-01 đã có test cắt socket từ tuần 3). ⚠️ Trường thứ 6 (`issue_place`) đọc 12/20 — xem rủi ro
+  - Công cụ: `python backend/scripts/verify_extraction.py "<thư mục ảnh>"`
+
+**KPIs** (đo trên 46 ảnh dev, **không phải Golden Set** — mọi con số còn cần nhãn kiểm định để chốt chính thức):
+
+| Chỉ số | Mục tiêu | Đo được | Ghi chú |
+|---|---|---|---|
+| MRZ checksum | ≥75% | **100%** (22/22) | 0 lần phải sửa lỗi |
+| QR read rate | ≥90% | **95.2%** (20/21) | mẫu số = ảnh **thật sự in QR** |
+| ⭐ **False Confidence** | **≤0.5%** | ⭐ **0.0%** (0/16) | lần đầu đo được; proxy QR/MRZ, mẫu số nhỏ |
+| Phân loại mặt | ≥99% | **22/22** (12 cặp 2021 + 10 cặp 2024) | đưa vào **sai thứ tự** có chủ đích |
+| Field Accuracy (có QR/MRZ) | ≥99% | 5/6 trường đạt **100%** đọc được | `issue_place` 60% là trường duy nhất hụt |
+| Field Accuracy (OCR thuần) | ≥95% | 66% khớp kênh chính xác | gần như toàn bộ ca lệch là `full_name` mất dấu |
+| Full-Card Accuracy | ≥92% | **chưa đo** | cần nhãn vàng cho cả 6 trường |
+| 🔴 p95 latency | ≤9s **mỗi cặp** | **17.5 s mỗi ẢNH** | máy 4 nhân / 4 GB — xem rủi ro |
 
 **Risks:**
 - ✅ ~~PaddleOCR tải model từ mạng (vi phạm P-01)~~ — **ĐÓNG 2026-08-10.** `model_dir` tường minh, thiếu tệp → ném lỗi chứ không tải. Kiểm chứng bằng cách **cắt sạch lời gọi socket** rồi chạy `warm_up()` + `recognize()`: cả hai thành công, 0 lần gọi mạng, không có `~/.paddleocr`. Giữ làm test hồi quy `tests/security/test_ocr_offline.py`
 - ✅ ~~MRZ không đạt 75%~~ — **ĐÓNG 2026-08-10: đo 22/22 = 100%**, 0 lần phải sửa lỗi, 2/2 ảnh có cả hai kênh cho số CCCD khớp nhau. ⚠️ Mẫu chưa gán nhãn nên Golden Set vẫn cần để chốt chính thức
 - 🟠 **`FULL_NAME` từ kênh OCR mất dấu tiếng Việt** (phát hiện #12) — model latin không có đầu ra cho 38/42 chữ hoa có dấu, và **không tồn tại** model rec tiếng Việt để thay
   - 🎯 Người dùng chốt 2026-08-10: **đo trước, chốt sau**. Đo được: `full_name` 11/15 khớp chính xác; 3/4 ca còn lại chỉ **thiếu dấu cách**, 1 ca sai một ký tự. QR là nguồn chính (trọng số 1.00) nên ảnh hưởng nhỏ hơn lo ngại ban đầu. Quyết định cuối khi có Golden Set
-- 🟠 **Ngân sách p95 ≤ 9 s cần theo dõi** (phát hiện #20) — nhận dạng toàn thẻ 2.7 s, dải 1.1–1.2 s. Ước tính hiện tại ~3.9 s/ảnh sau khi cho anchor chạy lười
-  - 🎯 P3: quy trình nhận dạng toàn thẻ **một lần** rồi dùng lại các vùng, thay vì nhiều lượt đọc dải
+- 🔴 **Ngân sách p95 ≤ 9 s — ĐO THẬT LÀ 17.5 s/ẢNH, nâng mức rủi ro từ 🟠 lên 🔴** (đo 2026-08-10 toàn chuỗi S3→S11). Trung bình 7.7 s/ảnh; ngân sách là 9 s cho **cả cặp**, tức ~4.5 s/ảnh
+  - Máy đo là máy dev của người dùng: **4 nhân / 4 GB RAM**. Chưa biết máy đích thực tế — đây là biến số lớn nhất chưa nắm được
+  - ✅ Đã áp dụng: nhận dạng toàn thẻ **một lượt duy nhất**, thế hệ thẻ suy từ chính các vùng text đó (phát hiện #32) — đã cắt từ 28–45 s xuống 7.7 s và xoá sạch `OcrTimeoutError`
+  - 🎯 P3 còn 3 đòn bẩy chưa dùng: (1) **bỏ hẳn lượt OCR khi QR đã đọc được cả 5 trường** — đo cho thấy QR thắng 19/20 ở 4 trường, nên với thẻ có QR tốt thì kênh OCR chỉ còn phục vụ `issue_place`; (2) chạy hai ảnh **song song** (ngân sách là cho cặp, không phải cho ảnh); (3) hạ `target_long_edge` và đo lại độ chính xác
+  - ⚠️ **Đừng chốt hạ chất lượng trước khi thử (1) và (2)** — cả hai không đụng gì tới độ chính xác
 - ✅ ~~QR chưa đạt ≥90%~~ — **ĐÓNG 2026-08-10: đo 20/21 = 95.2%.** Hai nguyên nhân tách bạch, và cái thứ hai lớn hơn cái thứ nhất:
   - **Mẫu số sai** (phát hiện #22): 5 mặt trước Căn cước 2024 bị tính là "QR trượt" dù thế hệ đó **không in QR ở mặt trước**, và 2 mặt sau có QR thì bị bỏ sót. Sửa nhãn ⇒ 66.7% → 85.7% mà không đụng một dòng mã giải mã nào
   - **Kênh yếu thật** (phát hiện #23): thêm 2 lần thử đọc **kênh Blue** ⇒ 85.7% → **95.2%**, 0 thẻ bị mất, +43 ms/ảnh
   - ⚠️ Nhãn thế hệ vẫn đọc bằng mắt trên 46 ảnh, chưa phải nhãn kiểm định — Golden Set vẫn cần để chốt chính thức
-- 🟠 **Phân loại mặt trên Căn cước 2024 chưa đo** (phát hiện #24) — mặt sau có **cả** QR (bỏ phiếu FRONT 0.40) lẫn MRZ (BACK 0.40) → nhiều khả năng hoà → `AMBIGUOUS`. An toàn (không đoán bừa) nhưng có thể bắt người dùng chọn mặt thủ công cho mọi thẻ 2024
-  - 🎯 Đo trước khi làm tuần 4; nếu đúng, thêm một tín hiệu phân biệt (thẻ 2024 chỉ có ảnh chân dung ở mặt trước)
+- ✅ ~~Phân loại mặt trên Căn cước 2024 chưa đo~~ — **ĐÓNG 2026-08-10.** Dự đoán đúng: **0/10 cặp** ra `RESOLVED`. Sửa bằng tín hiệu tổ hợp QR+MRZ → BACK trọng số 0.80 (không phải bằng tín hiệu chân dung như dự kiến, vì tín hiệu đó cần Haar cascade): **10/10 đúng, 0 sai**, đối chứng 2021 giữ 12/12, và **nhanh hơn 26%**. Xem phát hiện #31
+- 🟠 **`issue_place` là trường yếu duy nhất còn lại: 12/20 đọc được, cả 12 ở tầng 4 (conf 0.60) nên đều phải review.** Không kênh chính xác nào cung cấp trường này, và bộ nhận dạng trả `BO C0NG AI` nên tầng 1 (khớp chính xác) không bao giờ kích hoạt
+  - 🎯 Đo lại với **đủ 16 dòng `normalization_alias` thật** (phép đo dùng script chỉ gieo 2 dòng tầng 4) trước khi kết luận. Nếu vẫn thấp: thêm alias cho đúng các dạng hỏng mà bộ nhận dạng tạo ra — đây chính là việc admin làm qua UI mà không cần sửa mã (P-06)
 - 🔴 Chưa có Golden Set 200 cặp ảnh **đã gán nhãn trước/sau + thế hệ thẻ**
-  - 🎯 **Vẫn chặn việc chốt chính thức mọi KPI của P2**, kể cả những chỉ tiêu đã đo đạt. Cũng là thứ duy nhất đo được **False Confidence ≤ 0.5%** — chỉ tiêu chặn phát hành mà tới giờ **chưa đo được lần nào**
+  - 🎯 **Vẫn chặn việc chốt chính thức mọi KPI của P2**, kể cả những chỉ tiêu đã đo đạt
+  - ⭐ **Cập nhật 2026-08-10: False Confidence không còn là ô trống — đo được 0/16 = 0.0%** bằng proxy QR/MRZ-làm-nhãn (phát hiện #33). Nhưng proxy chỉ phủ **phần giao** giữa OCR và kênh chính xác, nên nó **không** nói gì về `issue_place` (không kênh chính xác nào có) hay `issue_date` trên thẻ 2021. Golden Set vẫn là thứ duy nhất đo được chỉ số đầy đủ
   - ⭐ **Nhãn phải có cả trường "thế hệ thẻ".** Bộ 53 ảnh chứa cả hai thế hệ suốt 3 tuần mà không lộ ra, vì mọi phép đo đều làm theo tỉ lệ tổng chứ không soi từng ca lệch. Golden Set thiếu nhãn này sẽ giấu đúng lỗi đó thêm một lần nữa
 
 ---

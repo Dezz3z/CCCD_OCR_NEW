@@ -231,8 +231,9 @@ graph TB
 
 | Tín hiệu | Trọng số | Cách phát hiện | Chỉ định |
 |---|---|---|---|
-| Có QR giải mã được | **0.40** | Payload khớp `^\d{12}\|` | → FRONT |
-| Có vùng MRZ | **0.40** | 20% đáy ảnh, ≥3 dòng, mật độ ký tự `<` > 15% | → BACK |
+| ⭐ **Có CẢ QR lẫn vùng MRZ** | **0.80** | hai tín hiệu dưới cùng bật | → BACK (Căn cước 2024) |
+| Có QR giải mã được, một mình | **0.40** | Payload khớp `^\d{12}\|` | → FRONT |
+| Có vùng MRZ, một mình | **0.40** | 20% đáy ảnh, ≥3 dòng, mật độ ký tự `<` > 15% | → BACK |
 | Anchor text mặt trước | 0.15 | Fuzzy ≥80% với "CĂN CƯỚC CÔNG DÂN", "CỘNG HÒA XÃ HỘI CHỦ NGHĨA VIỆT NAM", "Số / No.", "Họ và tên / Full name" | → FRONT |
 | Anchor text mặt sau | 0.15 | Fuzzy với "Đặc điểm nhân dạng", "Ngày, tháng, năm", "CỤC TRƯỞNG", "Personal identification" | → BACK |
 | ~~Vùng chân dung góc trái-dưới~~ | ~~0.10~~ | ~~Haar cascade hoặc phân tích độ phức tạp texture~~ | ⚠️ **không triển khai** |
@@ -251,6 +252,21 @@ graph TB
 ⭐ **Đọc dải tiêu đề chạy lười.** Nó tốn 41% một lượt nhận dạng toàn thẻ (§7.4.5). Đo trên 46 ảnh: QR hoặc khối MRZ đã chốt 36 ảnh, và trên 36 ảnh đó anchor **chưa từng đổi kết luận**. Nên chỉ nhận dạng dải tiêu đề khi hai tín hiệu quyết định để lại thế hoà.
 
 ⭐ **Khối MRZ dò bằng hình học thuần OpenCV** (`find_mrz_candidates`, ~20 ms), không cần đọc chữ. Bản thân nó không phân biệt được MRZ với khối địa chỉ, nên có thêm chốt vị trí: chỉ tính khối có tâm ở dưới 0.55 chiều cao thẻ (MRZ thật đo được tâm ~0.79).
+
+⭐⭐ **QR + MRZ trên cùng một ảnh KHÔNG phải thế hoà — đó là quan sát quyết định nhất có được** (đo 2026-08-10, đóng mục treo cuối §7.4.7).
+
+Coi hai tín hiệu là hai lá phiếu độc lập thì chúng triệt tiêu nhau đúng 0.40–0.40, và **mọi** cặp ảnh Căn cước 2024 ra `AMBIGUOUS` — vì thế hệ 2024 in QR ở **mặt sau**, ngay cạnh MRZ. Nhưng **không thế hệ nào in cả hai lên cùng một mặt, trừ đúng mặt sau của thẻ 2024**, nên *tổ hợp* nhận diện mặt sau mạnh hơn từng tín hiệu riêng — do đó trọng số 0.80, cao hơn cả hai, chứ không phải tổng của hai lá phiếu ngược chiều.
+
+Đo bằng `scripts/verify_side_classification.py`, ảnh **cố ý đưa vào sai thứ tự** (ảnh A là mặt sau) để một bộ phân loại mặc định "A là mặt trước" không thể ăn điểm:
+
+| Thế hệ | Trước khi sửa | Sau khi sửa |
+|---|---|---|
+| CCCD 2021 (12 cặp, đối chứng) | 12/12 đúng, 0 sai · 1212 ms/cặp | **12/12 đúng, 0 sai** · 914 ms/cặp |
+| ⭐ Căn cước 2024 (10 cặp) | **0/10 — toàn bộ `AMBIGUOUS`** (0.40 vs 0.40) | ⭐ **10/10 đúng, 0 sai** (0.80 vs 0.15) · 2621 ms/cặp |
+
+⭐ Rẻ hơn chứ không đắt hơn: khi tổ hợp đã quyết định, không còn phải đọc dải tiêu đề — thế hệ 2024 giảm **26%** thời gian, 2021 giảm 25%.
+
+⚠️ **Anchor mặt trước/sau hiện đang hardcode trong adapter và chỉ mang chữ của thế hệ 2021.** Trên thẻ 2024 chúng không nói lên điều gì, nên trước khi sửa, một mặt trước 2024 chỉ đạt 0.15 (khớp `CỘNG HÒA XÃ HỘI…`, dòng chung cho cả hai thế hệ) — dưới cổng 0.40. Đưa danh sách này vào `document_type.anchor_patterns` là bước đúng theo P-06/P-12, **nhưng vướng vấn đề con gà–quả trứng**: S4 chạy *trước* khi biết thế hệ thẻ. Tín hiệu tổ hợp ở trên không cần biết thế hệ, nên nó gỡ được nút thắt mà không phải trả lời câu hỏi đó — câu hỏi vẫn còn để ngỏ cho P3.
 
 ---
 
@@ -498,11 +514,25 @@ Vẫn cần Golden Set xác nhận: nhãn thế hệ ở đây đọc bằng m�
 | `expiry_date` | 1/2 | 1 ca `Không thời hạn` đọc thành `ovong thoi hg` — không cứu được, xem §7.4.6 |
 | `issue_place` | 2/2 định vị đúng | 1 ca chữ hỏng ⇒ `IssuePlaceNormalizer` trả `None` ⇒ ô trống (đúng thiết kế) |
 
-⚠️ **Chưa đo: bộ phân loại mặt trên thẻ 2024.** Mặt sau có **cả** QR (bỏ phiếu FRONT 0.40) lẫn MRZ (bỏ phiếu BACK 0.40) → nhiều khả năng hoà và ra `AMBIGUOUS`. An toàn (bỏ phiếu trắng chứ không đoán bừa) nhưng có thể bắt người dùng chọn mặt thủ công cho mọi thẻ 2024. Đây là việc còn treo, **không phải kết luận**.
+✅ **Đã đo 2026-08-10 — dự đoán đúng, và đã sửa.** Mặt sau 2024 có **cả** QR (bỏ phiếu FRONT 0.40) lẫn MRZ (bỏ phiếu BACK 0.40) nên hai tín hiệu quyết định triệt tiêu nhau: **0/10 cặp Căn cước 2024 ra `RESOLVED`, toàn bộ `AMBIGUOUS`**, trong khi 12 cặp CCCD 2021 đối chứng đạt 12/12 đúng. Cách sửa **không** phải thêm anchor riêng cho thế hệ 2024 (S4 chạy trước khi biết thế hệ), mà là coi **tổ hợp QR+MRZ** là một tín hiệu riêng chỉ định BACK ở trọng số 0.80 — xem §7.4.2. Công cụ: `scripts/verify_side_classification.py`.
 
 ---
 
 ## 7.5. Domain Service — nơi chứa tri thức nghiệp vụ
+
+### 7.5.0. `FieldNormalizer` — S9, bước làm cho ba kênh so sánh được với nhau
+
+Thuật toán đầy đủ: [03-luong-du-lieu.md §S9](03-luong-du-lieu.md#s9--chuẩn-hoá).
+
+⭐ **Service này tồn tại vì hợp nhất, không phải vì lưu trữ.** Ba kênh cho ba cách viết của cùng một giá trị; nếu không quy về một dạng chuẩn thì quy tắc 3 của §7.5.2 không bao giờ kích hoạt và quy tắc 4 báo xung đột giả trên mọi thẻ.
+
+| Mục | Nội dung |
+|---|---|
+| **Phụ thuộc** | `IssuePlaceNormalizer` (cho riêng trường `issue_place`) |
+| **Phương thức** | `normalize(key, text, confidence) -> NormalizedValue` · `normalize_channel(fields, confidence)` cho QR/MRZ (một độ tin cậy cho cả khối) |
+| **Bất biến** | ⭐ **Không bao giờ ném ngoại lệ** — mọi Value Object nó dùng đều có thể từ chối đầu vào, và từ chối ở đây là kết cục bình thường (P-08) |
+| **Bất biến** | `value is None` ⇒ `confidence = 0.0` — giống hệt `FusedField`, để giá trị bị loại không mang trọng số vào hợp nhất |
+| **Không được làm** | ❌ Cho giá trị thô "lọt" qua khi chuẩn hoá thất bại. Hợp nhất không phân biệt được thô với chuẩn, nên một giá trị thô sống sót sẽ bị chấm như một sự bất đồng thật |
 
 ### 7.5.1. `IssuePlaceNormalizer` — 4 tầng
 
@@ -521,13 +551,19 @@ Chi tiết thuật toán: xem [03-luong-du-lieu.md §S9](03-luong-du-lieu.md#s9-
 | 3 | **Thưởng đồng thuận** | ≥ 2 nguồn cùng giá trị → `+0.10` (trần 1.00), `agreement = true` |
 | 4 | **Phát hiện xung đột** | 2 nguồn ≥ 0.90 cho giá trị **khác nhau** → chọn nguồn ưu tiên cao hơn nhưng **hạ conf xuống 0.50** + cờ `SOURCE_CONFLICT`. UI hiện cả hai cho người dùng chọn |
 | 5 | ⭐ **Kiểm tra khớp thẻ** | Số CCCD từ QR ≠ từ MRZ → cờ nghiêm trọng `CARD_MISMATCH` → **chặn cứng** việc tạo Customer. Đây là dấu hiệu 2 ảnh không cùng một thẻ |
-| 6 | ⭐ **Suy luận từ mã số** | 3 số đầu = mã tỉnh (tra `province_code`); số thứ 4 = giới tính + thế kỷ; số 5–6 = 2 số cuối năm sinh → **đối chiếu chéo** với ngày sinh và giới tính đã trích. Mâu thuẫn → hạ conf + cờ `ID_INCONSISTENT` |
-| 7 | Tính điểm tổng | Trung bình có trọng số: `id_number` 0.30 · `full_name` 0.25 · `date_of_birth` 0.15 · `issue_date` 0.10 · `expiry_date` 0.10 · `issue_place` 0.10 |
+| 6 | ⭐ **Suy luận từ mã số** | 3 số đầu = mã tỉnh (tra `province_code`); số 5–6 + số thứ 4 (thế kỷ) → **đối chiếu chéo** với ngày sinh đã trích. Mâu thuẫn → conf xuống **0.50** + cờ `ID_INCONSISTENT`. ⚠️ Phần **giới tính** không làm ở đây (không có trong 6 `FieldKey`) mà ở `V-OCR-022` |
+| 7 | Tính điểm tổng | `ConfidenceCalculator` (§7.2 D4): trung bình có trọng số `id_number` 0.30 · `full_name` 0.25 · `date_of_birth` 0.15 · `issue_date` 0.10 · `expiry_date` 0.10 · `issue_place` 0.10. Trường không đọc được tính **0**, không loại khỏi mẫu số — nếu loại thì thẻ chỉ đọc được mỗi số CCCD sẽ chấm 1.00 |
 | 8 | Gắn cờ kiểm tra | `confidence < ocr.review_threshold` (mặc định 0.85) → `needs_review = true` |
 
 **Bất biến:** `confidence` ∈ [0, 1] tuyệt đối · nếu `value is None` thì `confidence = 0` và `source = NONE`.
 
+**Tiền điều kiện:** ⚠️ mọi ứng viên **đã qua S9**. Quy tắc 3 so sánh bằng `==`.
+
 **Không được làm:** quyết định chặn hay không chặn (việc của Validation) · sửa giá trị.
+
+⭐ **Vì sao xung đột (quy tắc 4) và mâu thuẫn nội tại (quy tắc 6) cùng bị hạ về 0.50:** hai tình huống này giống nhau về mặt nhận thức — "một trong hai bằng chứng sai và ta không biết cái nào". Con số nằm dưới ngưỡng review nên trường luôn tới tay người dùng; phát biểu trung thực là vậy, chứ không phải "QR bảo thế".
+
+⚠️ **Hai nguồn bất đồng mà cả hai đều dưới 0.90 thì KHÔNG phải xung đột.** Đó là nhiễu bình thường, và điểm thấp của bên thắng vốn đã đẩy trường vào diện review. Gắn cờ ở đó chỉ dạy người dùng phớt lờ cờ.
 
 ---
 

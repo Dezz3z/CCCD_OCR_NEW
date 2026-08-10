@@ -15,6 +15,7 @@ from __future__ import annotations
 import re
 
 from cocas.domain.enums.field_key import FieldKey
+from cocas.domain.value_objects.id_card_dates import NO_EXPIRY_TEXT
 
 from ..text_matching import is_printed_boilerplate, matches_any, similarity
 
@@ -36,8 +37,10 @@ _MIN_YEAR, _MAX_YEAR = 1900, 2100
 # The CCCD number: exactly 12 digits, not part of a longer run.
 _ID_NUMBER = re.compile(r"(?<!\d)(\d{12})(?!\d)")
 
-# Cards issued without an expiry print this instead of a date.
-NO_EXPIRY = "KHÔNG THỜI HẠN"
+# Cards issued without an expiry print this instead of a date. Re-exported from
+# Domain rather than spelled again here: `FieldNormalizer` compares against the
+# same constant, and two spellings would be two values to fusion.
+NO_EXPIRY = NO_EXPIRY_TEXT
 
 # ⚠️ **This guard cannot fire on the current recognizer, and that is deliberate
 # after measuring.** Swept over all 774 recognized lines in the sample:

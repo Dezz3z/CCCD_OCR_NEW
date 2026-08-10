@@ -10,6 +10,12 @@ MIN_AGE_AT_ISSUE = 14
 NO_EXPIRY_AGE_THRESHOLD = 60
 EXPIRY_SOON_DAYS = 90
 
+# ⭐ What a card without an expiry prints where the date would be. Lives in
+# Domain because both the extractor (Infrastructure) and the normalizer
+# (Domain) have to agree on the exact string — a "no expiry" spelled two ways
+# is two different values to fusion's consensus rule.
+NO_EXPIRY_TEXT = "KHÔNG THỜI HẠN"
+
 
 @dataclass(frozen=True, slots=True)
 class IdCardDates:

@@ -126,6 +126,40 @@
 
 ---
 
+## 12.6a. `FieldNormalizer` — Chuẩn hoá S9
+
+> Bổ sung khi triển khai P2 tuần 4. §7.2 luôn liệt kê service này (D1) nhưng §12 chưa có ô đặc tả; đánh số `12.6a` thay vì dồn số để không phá mọi tham chiếu `§12.7`–`§12.19` đang có trong mã nguồn.
+
+| Mục | Nội dung |
+|---|---|
+| **Tầng** | Domain Service |
+| **Trách nhiệm** | Đưa mỗi giá trị thô của từng kênh về **một dạng chuẩn duy nhất** để hợp nhất so sánh được |
+| **Phương thức** | `normalize(key, text, confidence) -> NormalizedValue` · `normalize_channel(fields, confidence) -> dict[FieldKey, NormalizedValue]` |
+| **Phụ thuộc** | `IssuePlaceNormalizer` |
+| **Tiền điều kiện** | không có — `text` có thể là `None`, rỗng, hoặc rác |
+| **Hậu điều kiện** | `value` là dạng chuẩn của §S9 hoặc `None`; `value is None ⇒ confidence == 0.0` |
+| **Bất biến** | ⭐ **Không bao giờ ném ngoại lệ** |
+| **Bất biến** | ⭐ Không cho giá trị thô lọt qua khi chuẩn hoá thất bại |
+| **Đầu ra** | `NormalizedValue{ value, confidence, flags, tier }` — `tier` chỉ dùng cho `issue_place` (`ocr_field.normalization_tier`) |
+| **Cờ** | `DATE_REPAIRED` · `NO_EXPIRY` · `ISSUE_PLACE_UNRECOGNIZED` · `UNPARSEABLE` |
+| **Không được làm** | ❌ Quyết định trường nào bắt buộc (Validation) · ❌ Chọn giữa các kênh (Fusion) |
+
+---
+
+## 12.6b. `ConfidenceCalculator` — Quy tắc 7 của Fusion
+
+| Mục | Nội dung |
+|---|---|
+| **Tầng** | Domain Service |
+| **Trách nhiệm** | Từ 6 trường đã hợp nhất tính **một** điểm cho cả thẻ |
+| **Phương thức** | `overall(fields) -> float` · `needs_retake(fields) -> bool` |
+| **Hậu điều kiện** | `overall ∈ [0, 1]`; trường `value is None` đóng góp **0** |
+| **Bất biến** | ⭐ Bảng trọng số cộng lại đúng **1.00** — được `assert` lúc nạp module, không phải tin suông |
+| **Dùng ở đâu** | Băng trạng thái ở màn hình xác nhận · ngưỡng `overall < 0.40` của ALT-03 ("chụp lại") |
+| **Không được làm** | ❌ Loại trường thiếu khỏi mẫu số — thẻ đọc được đúng 1/6 trường sẽ chấm 1.00 |
+
+---
+
 ## 12.7. `ValidationEngine`
 
 | Mục | Nội dung |

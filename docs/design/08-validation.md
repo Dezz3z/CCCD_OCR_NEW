@@ -246,7 +246,7 @@ A B C D E F G H I J K L M N O P Q R S T U V W X Y Z
 | `V-OCR-001` | Có đủ cả ảnh mặt trước và mặt sau | 🔴 | "Thiếu ảnh {mặt trước/mặt sau}." |
 | `V-OCR-002` | Hai ảnh không được cùng một mặt | 🔴 | "Bạn đã tải hai ảnh của cùng một mặt." |
 | `V-OCR-003` | Số CCCD đúng 12 chữ số | 🔴 | §8.3.1 |
-| `V-OCR-004` | Họ tên không trống, ≥ 2 từ | 🔴 / 🟡 | Trống → ERROR; 1 từ → WARNING |
+| `V-OCR-004` | Họ tên ≥ 2 từ | 🟡 | "Họ và tên chỉ có một từ — kiểm tra lại xem đã đủ họ và tên đệm chưa." ⚠️ Trường hợp **trống** thuộc `V-OCR-017`, không nhân đôi ở đây |
 | `V-OCR-005` | Ngày sinh là ngày có thật | 🔴 | "Ngày sinh không hợp lệ." |
 | `V-OCR-006` | Ngày cấp là ngày có thật | 🔴 | |
 | `V-OCR-007` | Ngày hết hạn là ngày có thật **hoặc** `KHÔNG THỜI HẠN` | 🔴 | |
@@ -259,13 +259,17 @@ A B C D E F G H I J K L M N O P Q R S T U V W X Y Z
 | `V-OCR-014` | Thẻ sắp hết hạn (< 90 ngày) | 🔵 | "CCCD sẽ hết hạn sau {n} ngày." |
 | `V-OCR-015` | ⭐ Nếu tuổi tại ngày cấp ≥ 60 thì `no_expiry` nên là `true` | 🔵 | "Công dân đủ 60 tuổi khi cấp — thẻ thường có giá trị không thời hạn." |
 | `V-OCR-016` | Nơi cấp thuộc 2 giá trị chuẩn | 🔴 | §8.3.9 |
-| `V-OCR-017` | Mọi trường bắt buộc không trống | 🔴 | "Trường '{label}' không được để trống." |
+| `V-OCR-017` | Mọi trường bắt buộc không trống | 🔴 | "Trường '{label}' không được để trống." ⭐ **5 trường**: `id_number`, `full_name`, `date_of_birth`, `issue_date`, `issue_place`. `expiry_date` **không** bắt buộc — cột `customer.expiry_date` cho phép NULL và `no_expiry` là trạng thái thật; bắt buộc nó sẽ chặn mọi thẻ không thời hạn |
 | `V-OCR-018` | `confidence >= ocr.review_threshold` | 🟡 | "Trường '{label}' được nhận dạng với độ tin cậy {p}%." |
 | `V-OCR-019` | ⭐ Không có cờ `CARD_MISMATCH` | 🔴 | "Hai ảnh có vẻ không thuộc cùng một thẻ (số CCCD từ QR khác từ MRZ)." |
 | `V-OCR-020` | Không có cờ `SOURCE_CONFLICT` chưa giải quyết | 🟡 | "Hai nguồn cho giá trị khác nhau ở trường '{label}'. Vui lòng chọn." |
 | `V-OCR-021` | Mã tỉnh (3 số đầu) hợp lệ | 🟡 | §8.3.1 |
-| `V-OCR-022` | Ký tự thứ 4 khớp giới tính | 🟡 | "Số CCCD cho thấy giới tính {x}, nhưng đã ghi {y}." |
+| `V-OCR-022` | Ký tự thứ 4 khớp giới tính | 🟡 | "Số CCCD cho thấy giới tính {x}, nhưng đã ghi {y}." ⚠️ Chỉ chạy khi có giới tính (từ payload QR hoặc biểu mẫu) — giới tính **không** nằm trong 6 `FieldKey` nên S10 không đối chiếu được |
 | `V-OCR-023` | Ký tự 5–6 khớp năm sinh | 🟡 | "Số CCCD cho thấy năm sinh {19xx}, nhưng đã ghi {yyyy}." |
+
+⭐ **Chỉ 9 trong 23 quy tắc chặn, và đó là thiết kế chứ không phải sơ suất.** Thẻ hết hạn tháng trước, công dân đọc ra 13 tuổi lúc cấp, mã tỉnh không có trong danh mục — mỗi thứ đều có cách giải thích chính đáng, và người dùng đang cầm cái thẻ trong tay. Chặn vì một nghi ngờ là để một người không thể lập hợp đồng cho khách đang ngồi trước mặt (P-08).
+
+⭐ **Phân công tránh báo trùng:** trường **trống** luôn là việc của `V-OCR-017`; các quy tắc về *hình dạng* (003, 005, 006, 007, 016) chỉ kích hoạt khi trường **có giá trị nhưng sai dạng**. Nếu không tách như vậy, một thẻ đọc hỏng sẽ nhận hai lỗi cho cùng một ô.
 
 ---
 

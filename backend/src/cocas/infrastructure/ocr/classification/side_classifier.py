@@ -9,8 +9,9 @@ So the signals are, in cost order:
 
 | Signal | Weight | Cost | Says |
 |---|---|---|---|
-| QR decodes with a valid layout | 0.40 | ~120 ms, shared with S5 | FRONT |
-| A three-line block sits low on the card | 0.40 | ~20 ms, pure OpenCV | BACK |
+| ⭐ **Both** a QR and a low three-line block | 0.80 | already paid | BACK (Căn cước 2024) |
+| QR decodes with a valid layout, alone | 0.40 | ~120 ms, shared with S5 | FRONT |
+| A three-line block sits low on the card, alone | 0.40 | ~20 ms, pure OpenCV | BACK |
 | Front title text in the top band | 0.15 | one small region | FRONT |
 | Back title text in the top band | 0.15 | same region | BACK |
 
@@ -46,6 +47,17 @@ if TYPE_CHECKING:
 WEIGHT_QR = 0.40
 WEIGHT_MRZ = 0.40
 WEIGHT_ANCHOR = 0.15
+
+# ⭐ QR **and** MRZ on one image is not a tie — it is the single most decisive
+# observation the classifier can make. Measured 2026-08-10 on the sample's 7
+# Căn cước 2024 photos: treating the two signals as independent votes left all
+# 10 front/back pairs `AMBIGUOUS` (0.40 vs 0.40, cancelling exactly), because
+# the 2024 generation prints its QR on the **back**, beside the MRZ (§7.4.7).
+#
+# No card prints both on the same side except that one, so the *combination*
+# identifies a back more strongly than either signal alone — hence a weight
+# above both, not the sum of two conflicting ones.
+WEIGHT_QR_WITH_MRZ = 0.80
 
 # ⭐ Re-derived, not copied. §7.4.2 pairs a 0.60 accept threshold with six
 # signals summing to 0.65 per side — so 0.60 demands that *all three* of a
@@ -160,13 +172,19 @@ class HeuristicSideClassifier:
         signals: dict[str, object] = {}
         front = back = 0.0
 
-        if doc_type.has_qr and self._has_qr(image_set):
-            front += WEIGHT_QR
-            signals["qr"] = True
+        carries_qr = doc_type.has_qr and self._has_qr(image_set)
+        carries_mrz = doc_type.has_mrz and self._has_mrz_block(image_set)
+        signals["qr"] = carries_qr
+        signals["mrz_block"] = carries_mrz
 
-        if doc_type.has_mrz and self._has_mrz_block(image_set):
+        if carries_qr and carries_mrz:
+            # ⭐ A Căn cước 2024 back, and nothing else — see WEIGHT_QR_WITH_MRZ.
+            back += WEIGHT_QR_WITH_MRZ
+            signals["qr_with_mrz"] = True
+        elif carries_qr:
+            front += WEIGHT_QR
+        elif carries_mrz:
             back += WEIGHT_MRZ
-            signals["mrz_block"] = True
 
         if front != back:
             # ⭐ A decisive signal already fired, so the anchors cannot change

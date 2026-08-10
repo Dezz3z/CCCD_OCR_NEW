@@ -8,6 +8,7 @@ from __future__ import annotations
 import numpy as np
 import pytest
 
+from cocas.domain.enums.card_side import CardSide
 from cocas.domain.ports.ocr import (
     DocumentTypeSpec,
     QrExtractionResult,
@@ -153,12 +154,21 @@ class TestLazyAnchors:
         classifier._weigh(StubImageSet(with_mrz_block=False), doc_type())
         assert recognizer.calls == 1
 
-    def test_an_image_showing_both_qr_and_mrz_is_still_probed(self):
-        """Equal decisive scores decide nothing, so the anchors get a say."""
+    def test_an_image_showing_both_qr_and_mrz_needs_no_anchor(self):
+        """⭐ QR + MRZ on one image is a Căn cước 2024 back — decisive on its own.
+
+        This test asserted the opposite until 2026-08-10 ("equal decisive scores
+        decide nothing, so the anchors get a say"). Measuring the 2024 photos
+        showed where that leads: the anchors are the 2021 generation's titles,
+        so they say nothing about a 2024 card, and all 10 front/back pairs came
+        back AMBIGUOUS after paying for a title-band pass.
+        """
         recognizer = StubRecognizer(FRONT_TITLE)
         classifier = HeuristicSideClassifier(StubQr(decodes=True), recognizer)
-        classifier._weigh(StubImageSet(with_mrz_block=True), doc_type())
-        assert recognizer.calls == 1
+        evidence = classifier._weigh(StubImageSet(with_mrz_block=True), doc_type())
+        assert recognizer.calls == 0
+        assert evidence.side is CardSide.BACK
+        assert evidence.confidence == module.WEIGHT_QR_WITH_MRZ
 
 
 class TestReconciliation:
@@ -217,7 +227,7 @@ class TestClassifyResult:
             StubImageSet(with_mrz_block=True),
             doc_type(),
         )
-        assert result.signals["b"] == {"mrz_block": True}
+        assert result.signals["b"] == {"qr": False, "mrz_block": True}
 
     def test_a_dying_recognizer_is_reported_not_raised(self):
         class Exploding:
