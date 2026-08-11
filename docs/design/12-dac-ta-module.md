@@ -65,14 +65,33 @@
 |---|---|
 | **Tầng** | Application |
 | **Trách nhiệm** | Chạy tuần tự S3→S11, xử lý lỗi từng chặng, gom kết quả |
-| **Phương thức** | `execute(front_image: bytes, back_image: bytes, doc_type: DocumentTypeSpec, progress: ProgressCallback) -> ExtractionResult` |
-| **Tiền điều kiện** | Hai ảnh đã qua kiểm định S1; `doc_type` tồn tại và `is_active` |
+| **Phương thức** | ⭐ `execute(front_image: bytes, back_image: bytes, doc_types: Sequence[DocumentTypeSpec], progress: ProgressCallback, *, profile, known_province_codes, force_full_ocr) -> ExtractionResult` |
+| **Tiền điều kiện** | Hai ảnh đã qua kiểm định S1; `doc_types` không rỗng, mọi phần tử `is_active`, phần tử đầu là thế hệ **phiên đã khai báo** |
 | **Hậu điều kiện** | `ExtractionResult` luôn có đủ 6 khoá trong `fields` (giá trị có thể `None`); `channel_summary` phản ánh đúng nguồn thắng cuộc; `validation_report` đã chạy đủ 23 quy tắc |
 | **Bất biến** | ⭐ **Không bao giờ ném ngoại lệ ra ngoài** — mọi lỗi gói vào `ExtractionResult.error_code` và `status`. Lý do: pipeline chạy trong job nền; ngoại lệ lọt ra sẽ làm chết worker |
-| **Bất biến** | `progress` được gọi ít nhất một lần mỗi chặng với `(percent, message_vi)` |
+| **Bất biến** | `progress` được gọi ít nhất một lần mỗi chặng với `(percent, message_vi)`. ⭐ Callback ném lỗi **không** làm hỏng lần trích xuất đã thành công |
+| **Bất biến** | `error_code` khác `None` **khi và chỉ khi** `status is FAILED`; `status` luôn thuộc 5 giá trị pipeline sinh ra được (`COMPLETED`, `COMPLETED_WITH_WARNINGS`, `NEEDS_REUPLOAD`, `NEEDS_MANUAL_ASSIGN`, `FAILED`) — 6 giá trị còn lại của `OcrSessionStatus` thuộc vòng đời phiên, không thuộc pipeline |
 | **Xử lý lỗi từng chặng** | Phân loại `SUY_GIẢM` / `CẦN_NGƯỜI_DÙNG` / `CHÍ_MẠNG` — xem [07-module-ocr.md §7.7](07-module-ocr.md) |
 | **Không được làm** | ❌ Ghi CSDL (Use Case làm) · ❌ Ghi file · ❌ Biết về HTTP |
-| **Đầu ra** | `ExtractionResult{ status, fields{6}, channel_summary, validation_report, diagnostics, overall_confidence, auto_swapped, duration_ms, error_code }` |
+| **Đầu ra** | `ExtractionResult{ status, fields{6}, channel_summary, validation_report, diagnostics, overall_confidence, auto_swapped, duration_ms, error_code, card_generation, detected_sides }` |
+
+> ⭐ **Vì sao `doc_types` là danh sách chứ không phải một `doc_type`** (khác bản D2.0 gốc): người dùng **không thể biết** thẻ mình đang cầm thuộc thế hệ nào, mà hai thế hệ đang lưu hành song song và có `zone_map` khác nhau. Truyền một phần tử duy nhất cho đúng hành vi cũ; truyền nhiều thì `IDocumentTypeSelector` (§12.19.1) chọn từ chính chữ S7 đã đọc. Xem §12.3.1.
+
+### ⭐ 12.3.1. Ba đòn bẩy thời gian, và cái nào thực sự trả tiền
+
+Đo 2026-08-11 trên 15 thẻ thật, máy 4 nhân / 4 GB:
+
+| # | Đòn bẩy | Cơ chế | Đo được |
+|---|---|---|---|
+| 1 | **Tối đa một lượt quét toàn thẻ mỗi ảnh** | Thế hệ suy từ chính `regions` của lượt đó (Port 19), không quét lần hai | Lượt hai từng tốn 28–45 s/ảnh, gấp 5–7 lần lượt đầu chứ không phải gấp đôi |
+| 2 | ⭐ **Bỏ hẳn lượt quét của mặt không còn gì để đóng góp** | `_sides_worth_reading` đọc `zone_map` để biết mặt nào in trường nào, rồi so với những gì QR/MRZ đã cho | **1.00 lượt/cặp thay vì 2 — cắt đúng 50% công nhận dạng**, 15/15 thẻ vẫn đủ 6/6 trường |
+| 3 | Chuẩn bị hai ảnh song song | `asyncio.gather` cho giải mã/tiền xử lý/QR; mọi thứ chạm bộ nhận dạng bị khoá tuần tự | Nhỏ nhất trong ba. Có mặt vì ngân sách tính theo **cặp** còn mọi phép đo trước tính theo **ảnh** |
+
+⚠️ **Khoá bộ nhận dạng là bắt buộc, không phải thận trọng thừa.** Hai lượt PaddleOCR đồng thời trên máy 4 GB sinh `Insufficient memory` **từ trong OpenCV** — nó hiện ra như lỗi giải mã ảnh, không phải như hết bộ nhớ.
+
+⚠️ **Mọi lời gọi Port đi qua `asyncio.to_thread`, và thứ tự lượng giá đối số quan trọng.** `PreprocessedImageSet` dựng biến thể **khi truy cập thuộc tính** (§12.4), nên `to_thread(engine.recognize, image_set.v3, …)` sẽ dựng `v3` **trên event loop** rồi mới đưa mảng đã xong cho luồng. Truy cập lười phải nằm *bên trong* luồng.
+
+**Kết quả đo (15 thẻ, một lần chạy):** 6/6 trường trên **15/15** thẻ · 0 ô phải review · độ tin cậy tổng trung bình 0.99 · 0 lỗi validation. **Thời gian: trung bình 9.5 s/cặp, p95 12.4 s/cặp — 🔴 vẫn vượt ngân sách 9 s.** Đòn bẩy 2 đã cắt từ ~15.4 s (2 × 7.7 s/ảnh) xuống 9.5 s; phần còn lại nằm ở bản thân lượt quét.
 
 ---
 
@@ -420,7 +439,7 @@
 
 ---
 
-## 12.19. Bảng tra cứu nhanh — 18 Port
+## 12.19. Bảng tra cứu nhanh — 19 Port
 
 | # | Port | Tầng hiện thực | Hiện thực chính |
 |---|---|---|---|
@@ -442,8 +461,26 @@
 | 16 | `IClock` | Infrastructure | `SystemClock` · `FrozenClock` (test) |
 | 17 | `IIdGenerator` | Infrastructure | `Uuid7Generator` · `SequentialIdGenerator` (test) |
 | 18 | `ICryptoService` | Infrastructure | `DpapiCryptoService` · `NullCryptoService` (dev) |
+| ⭐ 19 | `IDocumentTypeSelector` | Infrastructure | `MarkerDocumentTypeSelector` |
 
 > ⭐ **Mỗi Port phải có ít nhất một hiện thực fake/null dùng trong test.** Đây là tiêu chí nghiệm thu kiến trúc.
+
+### ⭐ 12.19.1. Vì sao có Port thứ 19 (thêm ở P3)
+
+`ExtractionPipeline` phải trả lời một câu hỏi mà không module nào trước đó gặp: **thẻ này thuộc thế hệ nào?** Không thể hỏi người dùng — cả hai thế hệ đang lưu hành, và một phiên khai báo nhầm sẽ trích **mọi trường qua sai `zone_map`**, tức là sinh ra giá trị sai đầy tự tin, đúng thứ §7.9 chặn phát hành.
+
+| Mục | Nội dung |
+|---|---|
+| **Tầng** | Domain (Port) · hiện thực `MarkerDocumentTypeSelector` (Infrastructure) |
+| **Phương thức** | `select(regions: list[TextRegion], candidates: Sequence[DocumentTypeSpec]) -> DocumentTypeSpec \| None` |
+| **Tiền điều kiện** | `regions` là kết quả **đã có sẵn** của S7 |
+| **Bất biến** | ⭐ **Không bao giờ nhận dạng lại.** Một lượt quét thêm đắt hơn toàn bộ các chặng còn lại cộng lại (§7.4.6 phát hiện 20) |
+| **Bất biến** | Hoà phiếu ⇒ trả `None`, người gọi giữ nguyên thế hệ đã khai báo. Phá hoà bằng thứ tự danh sách sẽ biến "không có bằng chứng" thành một lá phiếu ngầm |
+| **Dữ liệu** | `document_type.identity_markers` — cụm từ **chỉ một thế hệ in**. ⚠️ **Không** dùng `anchor_patterns`: hai thế hệ dùng chung phần lớn nhãn (`Full name`, `Date of birth`, `BỘ CÔNG AN`), và `Ngày, tháng, năm` (2021) là tiền tố của `Ngày, tháng, năm sinh` (2024) — đúng bẫy tiền tố chung ở ràng buộc 7. Đếm nhãn khớp là đo **ảnh rõ tới đâu**, không phải đo thế hệ |
+| **Ngưỡng** | 85, không phải 75 của anchor trường |
+| **Đo thật** | 2026-08-11, 46 ảnh: **43/44 quyết định đúng · 0 sai · 1 từ chối trả lời** |
+
+⚠️ **Điểm mù đã biết:** ca duy nhất từ chối là một **mặt sau Căn cước 2024** mà chữ in bị nhoè. Tín hiệu **cấu trúc** (một ảnh mang cả QR lẫn MRZ thì chỉ có thể là mặt sau 2024) sẽ quyết định được ca đó, nhưng Port 19 chỉ nhận `regions` nên không thấy tín hiệu này. Muốn vá thì phải thêm dữ liệu "thế hệ này in QR ở mặt nào" vào `document_type` — hoãn có chủ đích (P-10) cho tới khi Golden Set cho thấy tỉ lệ này đáng kể.
 
 ---
 

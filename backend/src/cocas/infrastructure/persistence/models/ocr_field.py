@@ -33,8 +33,13 @@ class OcrFieldModel(UuidPkMixin, Base):
         CheckConstraint(f"field_key IN {_FIELD_KEY_VALUES}", name="field_key_valid"),
         CheckConstraint(f"source IN {_SOURCE_VALUES}", name="source_valid"),
         CheckConstraint("confidence BETWEEN 0 AND 1", name="confidence_range"),
+        # ⭐ 1..5, not 1..4. `IssuePlaceNormalizer` gained a fifth tier on
+        # 2026-08-11 (§12.5.1, the opening-letters discriminator) and it is the
+        # tier that resolves most real readings — 20 of 20 in the sample. The
+        # old bound would have rejected almost every `issue_place` row the
+        # pipeline produces, at INSERT time, in a background job.
         CheckConstraint(
-            "normalization_tier IS NULL OR normalization_tier BETWEEN 1 AND 4", name="tier_range"
+            "normalization_tier IS NULL OR normalization_tier BETWEEN 1 AND 5", name="tier_range"
         ),
         Index(
             "ix_ocr_field__corrected", "field_key", "source", postgresql_where="user_corrected"

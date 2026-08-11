@@ -548,7 +548,9 @@ erDiagram
 | `user_value_enc` | BYTEA | NULL | 🔒 Giá trị người dùng chấp nhận |
 | `bbox` | JSONB | NULL | `{"x":0.38,"y":0.28,"w":0.57,"h":0.10}` → UI vẽ khung highlight |
 | `candidates` | JSONB | NULL | `[{"source":"QR","confidence":1.0,"agrees":true}]` — **chỉ nguồn và điểm** |
-| `normalization_tier` | SMALLINT | NULL, CHECK 1..4 | Tầng nào của bộ chuẩn hoá khớp (cho `issue_place`) |
+| `normalization_tier` | SMALLINT | NULL, ⭐ CHECK **1..5** | Tầng nào của bộ chuẩn hoá khớp (cho `issue_place`) |
+
+> 🔴 **1..5, không phải 1..4.** Tầng 5 (§12.5.1) ra đời 2026-08-11 và là tầng giải được **20/20** lần đọc `issue_place` trong bộ mẫu — ràng buộc cũ sẽ từ chối gần như mọi dòng `ocr_field` mà pipeline sinh ra, **lúc INSERT, trong job nền, sau khi đã trả toàn bộ chi phí OCR**. Nới bằng migration `20260811_010_markers_tier5`. `IssuePlaceNormalizer.MAX_TIER` là hằng số đối chiếu, và `tests/unit/migrations/test_constraint_names.py` so hai bên với nhau mà không cần CSDL.
 
 **Ràng buộc:** `uq_ocr_field__result_key` UNIQUE `(ocr_result_id, field_key)`.
 
@@ -798,13 +800,16 @@ erDiagram
 | `field_schema` | JSONB | `[{"key":"full_name","type":"text","required":true,"label":"Họ và tên"}]` |
 | ⭐ `zone_map` | JSONB | Toạ độ tương đối từng trường trên khung chuẩn (S8) — **hiệu chỉnh được qua UI** |
 | `anchor_patterns` | JSONB | Mẫu anchor text cho từng mặt |
+| ⭐ `identity_markers` | JSONB NOT NULL DEFAULT `[]` | Cụm từ **chỉ thế hệ này in**, dùng để nhận ra thẻ thuộc dòng nào (Port 19, §12.19.1). ⚠️ **Không** suy được từ `anchor_patterns` — xem ghi chú dưới |
 | `has_qr` / `has_mrz` | BOOLEAN | Bật/tắt kênh trích xuất |
 | `is_ocr_supported` | BOOLEAN | `GCN_DKDN` sẽ có `FALSE` (chỉ đính kèm) |
 | `expected_aspect_ratio` | REAL | 85.6/54 ≈ 1.585 cho thẻ ID-1 |
 | `is_active` | BOOLEAN | |
 | `created_at` | TIMESTAMPTZ | |
 
-> ⭐ **Bảng làm cho NFR-10 khả thi.** Thêm hỗ trợ GPLX = thêm một bản ghi (khai báo trường, vùng, anchor). Module OCR core **không đổi**.
+> ⭐ **Bảng làm cho NFR-10 khả thi.** Thêm hỗ trợ GPLX = thêm một bản ghi (khai báo trường, vùng, anchor, marker). Module OCR core **không đổi**.
+>
+> ⚠️ **`identity_markers` là cột riêng chứ không phải suy ra từ `anchor_patterns`, và đó là kết luận từ phép đo chứ không phải sở thích.** Hai thế hệ khai cùng phần lớn nhãn (`Full name`, `Date of birth`, `BỘ CÔNG AN`), tệ hơn nữa `Ngày, tháng, năm` (2021) là **tiền tố** của `Ngày, tháng, năm sinh` (2024) — đúng bẫy tiền tố chung ở ràng buộc 7 của `CLAUDE.md`. Đếm nhãn khớp là đo **ảnh rõ tới đâu**, không phải đo thế hệ. Cùng lý do, `CĂN CƯỚC` và `IDENTITY CARD` **không** nằm trong marker của thế hệ 2024 dù chính là tiêu đề nó in: `CĂN CƯỚC CÔNG DÂN` đạt 100 điểm so với `CĂN CƯỚC`, nên marker đó khớp cả hai thế hệ và hoà phiếu trên **mọi** mặt trước 2021.
 
 ---
 
@@ -1259,6 +1264,11 @@ tag(16)
 | 7 | `20260811_007_seed_setting` | ~30 khoá cấu hình mặc định |
 | 8 | `20260811_008_seed_template` | 2 mẫu: `01A_HD_GDN`, `01A_GDKQ` |
 | ⭐ 9 | `20260811_009_seed_doctype_2024` | 1 bản ghi `CAN_CUOC_2024` + zone_map/anchor riêng + 3 alias `BỘ CÔNG AN` |
+| ⭐ 10 | `20260811_010_markers_tier5` | Cột `document_type.identity_markers` + gieo marker cho cả hai thế hệ · 🔴 nới `ck_ocr_field__tier_range` từ 1..4 lên **1..5** |
+
+> ⚠️ **Migration 10 là migration đầu tiên có `downgrade()` cố tình có thể thất bại.** Hạ cấp thu hẹp lại CHECK, nên bất kỳ dòng `ocr_field` nào đã ghi ở tầng 5 sẽ làm nó lỗi. Đó là hành vi **đúng**: âm thầm xoá hoặc viết lại giá trị đã trích của người dùng cho vừa ràng buộc cũ còn tệ hơn là từ chối hạ cấp.
+>
+> ⭐ **Tên revision ngắn có lý do:** bản nháp đầu đặt `20260811_010_doctype_markers_and_tier5` (37 ký tự) và `tests/unit/migrations/test_revision_ids.py` bắt được ngay — chính là cái bẫy `VARCHAR(32)` ghi ở trên, tái diễn sau đúng hai ngày.
 
 > ⭐ **Vì sao là migration mới chứ không sửa `003`:** `003` là seed dùng `ON CONFLICT DO NOTHING`, nên sửa tại chỗ sẽ khiến mọi CSDL **đã migrate** không bao giờ nhận được thế hệ thẻ mới lẫn alias của nó. Đây là ranh giới giữa "hiệu chỉnh số liệu của một bản ghi đã có" (sửa `003` được, như tuần 3 đã làm với `zone_map`) và "thêm một bản ghi mới" (bắt buộc migration mới).
 

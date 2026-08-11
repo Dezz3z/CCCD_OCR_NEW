@@ -74,7 +74,7 @@ Vi phạm = phải sửa, không phải tranh luận.
 | Endpoint API | **64** |
 | Wireframe | **8** |
 | Quy tắc validation | **56** |
-| Port (interface) | **18** |
+| Port (interface) | **19** ⭐ |
 | Thư viện Python | **39** |
 | Wizard | **3 bước** |
 | Mẫu hợp đồng | **2** (`01A_HD_GDN`, `01A_GDKQ`) |
@@ -126,20 +126,20 @@ Vi phạm = phải sửa, không phải tranh luận.
 
 **Giai đoạn 1 (Thiết kế): ✅ HOÀN THÀNH** — tài liệu D2.0 đã đóng băng, 0 lỗi kiến trúc đã biết.
 
-**Giai đoạn 2 (Triển khai): P0 ✅ + P1 ✅ HOÀN THÀNH (2026-08-09). P2 (OCR) đang làm — tuần 1 (tiền xử lý ảnh) ✅ + tuần 2 (kênh QR/MRZ) ✅ xong 2026-08-09, tuần 3 (engine + phân loại mặt + trích trường) ✅ xong 2026-08-10, tuần 3b (thế hệ thẻ thứ hai + chốt chỉ tiêu QR) ✅ xong 2026-08-10, ⭐ tuần 4 (chuẩn hoá + hợp nhất + validation) ✅ xong 2026-08-10 — 1096 test xanh, ⭐ **tầng 5 `issue_place` (phân biệt bằng chữ đầu) bổ sung 2026-08-11 — 1155 test xanh**. P2 hoàn tất phần mã nguồn; còn lại là Golden Set.**
+**Giai đoạn 2 (Triển khai): P0 ✅ + P1 ✅ HOÀN THÀNH (2026-08-09). P2 (OCR) mã nguồn ✅ xong 2026-08-11 — tuần 1 (tiền xử lý ảnh) + tuần 2 (kênh QR/MRZ) + tuần 3 (engine + phân loại mặt + trích trường) + tuần 3b (thế hệ thẻ thứ hai) + tuần 4 (chuẩn hoá + hợp nhất + validation) + tầng 5 `issue_place`. Còn lại của P2 là Golden Set.**
+
+⭐ **P3 (Nghiệp vụ) ĐANG LÀM — module 1/7 xong 2026-08-11: `ExtractionPipeline`. 1228 test xanh.**
 Chi tiết đầy đủ từng module — xem [progress.md](progress.md) (cập nhật theo từng module, không rút gọn).
 
-### Kiến trúc đã triển khai (P0 + P1)
-
-Backend Python (`backend/src/cocas/`) đã có đủ 3/4 tầng theo Dependency Rule, `application/` mới có khung thư mục rỗng (Use Case thật là việc của P3):
+### Kiến trúc đã triển khai (P0 + P1 + P2 + P3 module 1)
 
 | Tầng | Trạng thái |
 |---|---|
-| `domain/` | ✅ Đầy đủ — 10 Value Object · 14 enum · 8 Entity · **7 Domain Service** (thêm `FieldNormalizer`, `ConfidenceCalculator` ở tuần 4; ⭐ `IssuePlaceNormalizer` lên **5 tầng** với `issue_place_shape.py`) · 18 Port (+ fake/null cho mỗi Port) · cây ngoại lệ · ⭐ **`validation/`**: `ValidationEngine` + registry 4 tập quy tắc + **23 quy tắc `V-OCR-*`** (3 tập còn lại đăng ký **rỗng**, không phải thiếu — xem ghi chú trong `engine.py`) |
-| `infrastructure/` | Một phần — **persistence** (19 bảng, 8 migration, 7/8 repository + UnitOfWork; `Contract` repo **hoãn có chủ đích** vì phụ thuộc `RenderContextBuilder` chưa tồn tại tới P3) · **security** (DPAPI thật + AES-256-GCM + blind index) · **logging** (Loguru 3 sink + PII filter 2 lớp) · **system** (`SystemClock`, `Uuid7Generator`) · ⭐ **ocr đầy đủ 7/7 Port**: `preprocessing` (`OpenCvPreprocessor` + 5 biến thể tạo lười + `IOrientationOracle`) · `channels` (`ZxingQrDecoder`, `Td1MrzReader`, `td1.py`) · `engines` (`PaddleOcrAdapter`, `PaddleOrientationOracle`) · `classification` (`HeuristicSideClassifier`) · `extraction` (`ZoneAndAnchorExtractor`, `field_patterns`) · `text_matching.py`. Chưa có: storage, documents, queue |
-| `application/` | ⏳ Rỗng — chờ P3 |
-| `presentation/` | Một phần — middlewares (CORS, security headers, correlation-id, local token) · chưa có router/endpoint nào (64 endpoint là việc P3) |
-| `container.py` | ✅ Composition Root nối toàn bộ đồ thị phụ thuộc thật — ngoại lệ duy nhất được import-linter cho phép import cả 4 tầng |
+| `domain/` | ✅ Đầy đủ — 10 Value Object · 14 enum · 8 Entity · **7 Domain Service** (⭐ `IssuePlaceNormalizer` **5 tầng** với `issue_place_shape.py`) · ⭐ **19 Port** (+ fake/null cho mỗi Port) · cây ngoại lệ · ⭐ **`validation/`**: `ValidationEngine` + registry 4 tập quy tắc + **23 quy tắc `V-OCR-*`** (3 tập còn lại đăng ký **rỗng**, không phải thiếu — xem ghi chú trong `engine.py`) |
+| `infrastructure/` | Một phần — **persistence** (19 bảng, **10 migration**, 7/8 repository + UnitOfWork; `Contract` repo **hoãn có chủ đích** vì phụ thuộc `RenderContextBuilder` chưa tồn tại) · **security** (DPAPI thật + AES-256-GCM + blind index) · **logging** (Loguru 3 sink + PII filter 2 lớp) · **system** · ⭐ **ocr đầy đủ 8/8 Port OCR**: `preprocessing` · `channels` (`ZxingQrDecoder`, `Td1MrzReader`) · `engines` (`PaddleOcrAdapter`) · `classification` (`HeuristicSideClassifier`, ⭐ `MarkerDocumentTypeSelector`) · `extraction` · `text_matching.py`. Chưa có: storage, documents, queue, **alias repository** |
+| `application/` | ⭐ Một phần — `dto/extraction.py` (`ExtractionResult` + bất biến của nó) · `pipelines/extraction_pipeline.py` (9 chặng S3→S11). Use Case vẫn rỗng |
+| `presentation/` | Một phần — middlewares (CORS, security headers, correlation-id, local token) · chưa có router/endpoint nào (64 endpoint là việc P3 module 7) |
+| `container.py` | ✅ Composition Root — ⚠️ **chưa nối `ExtractionPipeline`**: nó cần `IAliasRepository`, thứ chưa có hiện thực thật. Đó là module 2 của P3 |
 
 ⭐ Mốc demo M1 (roadmap §14.3) đã đạt: [`backend/scripts/demo_m1_customer.py`](backend/scripts/demo_m1_customer.py) tạo Customer giả qua Container thật, đọc lại giải mã đúng, xác nhận `id_number_enc` là nhị phân không đọc được — chạy thật trên PostgreSQL. Đã có bản build `.exe` trial đầu tiên ([`backend/build.spec`](backend/build.spec)) — khởi động và trả request thật; chưa đóng gói model OCR thật (chưa có adapter).
 
@@ -170,6 +170,9 @@ Mọi mục dưới đây đã đồng bộ ngược vào `docs/design/`, không
   - ⚠️ **Tầng 3 và 4 không phải hai đường dự phòng độc lập — chúng chết cùng một lúc.** Bộ nhận dạng dính chữ (`CUCTRUONG CUCCANH SAT`) làm giao của `token_set_ratio` rỗng **và đồng thời** làm mất token `CUC` mà tầng 4 đòi. Kết quả: **8/22 ảnh không ra giá trị nào** — tệ hơn "độ tin cậy thấp".
   - ⚠️ **Tín hiệu "độ dài" hấp dẫn trên giấy nhưng sai trên máy.** Hai giá trị chuẩn chênh gần 5 lần (8 / 38 ký tự), nhưng văn bản thật tới nơi thì 2021 = 19–20 ký tự (vùng cắt cụt tên cơ quan) và 2024 = 15 và 31 (vùng nuốt thêm dòng tiếng Anh) — **chồng lấn và ngược chiều**. Độ dài là thuộc tính của **vùng cắt**, không phải của trường. Chỉ độ dài **từ đầu tiên** là dùng được.
   - ⚠️ **Script đo từng gieo 2 dòng alias trong khi bản seed thật có 19** — và 2 dòng đó đều tầng 4, nên tầng 3 **không có gì để so** và không thể kích hoạt. Con số "0.60 phẳng" trước đây là hiện vật của fixture, không phải tính chất của trường. Khi một trường trông yếu đều, hãy kiểm tra fixture trước.
+- ⭐⭐ **`ExtractionPipeline` nhận DANH SÁCH `document_type`, không phải một cái** (P3 module 1, khác §12.3 bản gốc). Người dùng **không thể biết** thẻ mình cầm thuộc thế hệ nào, hai thế hệ lưu hành song song, và một phiên khai nhầm sẽ trích mọi trường qua sai `zone_map` — tức là sinh giá trị **sai đầy tự tin**, đúng thứ §7.9 chặn phát hành. Truyền một phần tử = hành vi cũ.
+  - ⚠️ Bản đồ "mặt nào in trường nào" (dùng cho đòn bẩy bỏ lượt quét) phải lấy **hợp của mọi thế hệ ứng viên**, vì hai thế hệ in `expiry_date` ở hai mặt khác nhau. Dùng thế hệ đã khai báo sẽ khiến phiên khai nhầm bỏ đúng lượt quét lẽ ra nhận ra nó là thế hệ kia.
+- ⭐ **S9 chạy TRƯỚC S7 cho hai kênh chính xác.** Không phải để đẹp thứ tự: đòn bẩy "bỏ lượt quét" cần biết trường nào còn thiếu, mà muốn biết thì QR/MRZ phải chuẩn hoá xong trước.
 - ⭐ **Chỉ 9/23 quy tắc `V-OCR-*` chặn cứng.** Thẻ hết hạn, tuổi bất thường, mã tỉnh lạ đều là 🟡 — chặn vì nghi ngờ là để người dùng không lập được hợp đồng cho khách đang ngồi trước mặt (P-08). Và trường **trống** chỉ do `V-OCR-017` báo: các quy tắc hình dạng (003/005/006/007/016) chỉ chạy khi trường **có giá trị nhưng sai dạng**, nếu không một ô hỏng sẽ nhận hai lỗi.
 
 ### Ràng buộc cần biết khi làm tiếp P2
@@ -183,7 +186,10 @@ Mọi mục dưới đây đã đồng bộ ngược vào `docs/design/`, không
    - ⭐ **False Confidence ≤0.5%: đã đo được 0/16 = 0.0%** (2026-08-10, đo lại 2026-08-11 vẫn 0/16). ⚠️ Proxy dùng QR/MRZ **làm nhãn** cho các trường OCR cũng đọc được, nên nó **chỉ phủ phần giao** — và `issue_place` nằm **ngoài** phần giao đó vì không kênh chính xác nào đọc trường này. Golden Set vẫn cần cho con số đầy đủ, và nó là **cách duy nhất** để kiểm chứng tầng 5.
    - ⭐ **`issue_place`: 20/20 thẻ, conf trung bình 0.89, 1 ô phải review** (2026-08-11, sau khi thêm tầng 5). Trước đó: 12/20 ở 0.60, cả 12 phải review.
    - ⭐ **Nhãn của Golden Set phải có cả trường "thế hệ thẻ"** — xem ràng buộc 7.
-   - Đo lại bất cứ lúc nào: `python backend/scripts/verify_qr_mrz.py "<thư mục ảnh>"` (kênh) · `verify_side_classification.py` (phân loại mặt) · ⭐ `verify_extraction.py` (toàn chuỗi S3→S11).
+   - ⭐ **Pipeline thật (P3 module 1), 15 thẻ ghép đúng: 6/6 trường trên 15/15 thẻ, 0 ô review, conf tổng 0.99, 0 lỗi validation** (2026-08-11).
+   - Đo lại bất cứ lúc nào: `verify_qr_mrz.py` (kênh) · `verify_side_classification.py` (phân loại mặt) · `verify_extraction.py` (từng bộ phận S3→S11) · ⭐ **`verify_pipeline.py` (toàn bộ `ExtractionPipeline`; thêm `--selector-sweep` để đo riêng Port 19)**.
+   - ⚠️ **Ghép ảnh theo tên file liền nhau là SAI và đã tạo ra một bộ số hoàn toàn giả** (23/26 cặp `SOURCE_CONFLICT`, 0 thẻ 2024 nhận ra được). Ghép bằng **số CCCD** mà QR/MRZ cùng in. Xem phát hiện #35 trong `progress.md`.
+   - ⚠️ **Không ghép cặp được thẻ Căn cước 2024 bằng cách đó** — mặt trước thế hệ này không có kênh chính xác nào nên không cho số CCCD. Hệ quả: **toàn chuỗi trên thẻ 2024 vẫn chưa được đo.**
 2. **PyInstaller + asyncpg**: `hiddenimports = ["asyncpg.pgproto"]` không đủ — asyncpg nạp submodule Cython biên dịch sẵn không thấy được qua static analysis. Dùng `collect_submodules("asyncpg")` (đã áp dụng trong `build.spec`).
 3. **`console=False` (bản production) sẽ crash lúc khởi động** — `loguru_config.configure_logging()`'s console sink gọi `logger.add(sys.stderr, ...)`, và `sys.stderr` là `None` dưới chế độ windowed của PyInstaller. Cố ý để lại cho P5/P6 (khi Supervisor đọc log qua file), **không phải bug đã sửa**.
 4. ✅ ~~Sửa xoay 180° cho mặt trước~~ — **xong tuần 3.** ⚠️ Nhưng **không** bằng model `cls` như dự kiến: tín hiệu `cls`/đếm vùng text không phân biệt được hai chiều (xem quyết định ở trên). Dùng dấu vân chữ in sẵn ở dải trên; đo 44/46 đúng cả hai chiều, **0 sai**.
@@ -192,11 +198,14 @@ Mọi mục dưới đây đã đồng bộ ngược vào `docs/design/`, không
    - ⚠️ Điều này ẩn suốt 3 tuần vì mọi phép đo đều làm theo **tỉ lệ tổng**. Khi một tỉ lệ trông thấp, hãy mở từng ca lệch ra xem trước khi kết luận kênh yếu — lần này 19 trong 23 điểm phần trăm hụt là do **mẫu số sai**, không phải do bộ giải mã.
    - ✅ **Đã đo và đã sửa (2026-08-10):** phân loại mặt trên thẻ 2024 từng ra `AMBIGUOUS` **0/10 cặp** vì QR và MRZ triệt tiêu nhau. Sửa bằng tín hiệu tổ hợp QR+MRZ → BACK (0.80): **10/10 đúng**, đối chứng 2021 giữ 12/12. Đo lại: `python backend/scripts/verify_side_classification.py "<thư mục ảnh>"`.
 7. ⚠️ **Anchor ngắn vẫn là cái bẫy chưa hết.** Sau `Số` (2 ký tự, khớp `SOCIALIST REPUBLIC` 100 điểm) là `Số:` (3 ký tự, **80.0**) — gỡ 2026-08-10. Và hai nhãn chia nhau tiền tố dài (`Ngày, tháng, năm cấp` / `…hết hạn`) khớp chéo ở 83.9/83.3. Mọi anchor mới **phải** được chấm với dòng tiêu đề thật trước khi gieo; `tests/unit/infrastructure/ocr/extraction/test_doctype_seeds.py` làm việc đó tự động.
-8. 🔴 **Ngân sách p95 ≤ 9 s ĐANG BỊ VƯỢT — đo toàn chuỗi S3→S11 được 7.7 s/ảnh trung bình, p95 17.5 s/ảnh**, trong khi ngân sách là 9 s cho **cả cặp**. Máy đo: **4 nhân / 4 GB RAM**.
-   - ⭐ **Nhận dạng toàn thẻ hai lượt đắt gấp 5–7 lần chứ không phải gấp đôi** trên máy ít RAM, và gây `OcrTimeoutError` thật. Gộp còn **một lượt** (thế hệ thẻ suy từ chính các vùng text đó) đã cắt 28–45 s xuống 7.7 s. Quy trình P3 **bắt buộc** làm vậy — đây không phải tối ưu vặt.
-   - 🎯 Ba đòn bẩy còn nguyên cho P3, **không cái nào đụng tới độ chính xác**: (1) bỏ hẳn lượt OCR khi QR đã cho đủ trường (QR thắng 19/20 ở 4 trường); (2) xử lý hai ảnh **song song** (ngân sách tính cho cặp); (3) hạ `target_long_edge` rồi đo lại.
-   - ⚠️ Máy đích thực tế **chưa biết** — đây là biến số lớn nhất chưa nắm được của chỉ tiêu này.
-9. ⚠️ **Đừng chạy pytest song song với script PaddleOCR** trên máy này — đã gây `OcrTimeoutError` giả hai lần trong một phiên (4 nhân / 4 GB).
+8. 🔴 **Ngân sách p95 ≤ 9 s/cặp VẪN BỊ VƯỢT — đo pipeline thật 2026-08-11: trung bình 9.5 s/cặp, p95 12.4 s/cặp.** Máy đo: **4 nhân / 4 GB RAM**.
+   - ⭐ **Nhận dạng toàn thẻ hai lượt đắt gấp 5–7 lần chứ không phải gấp đôi** trên máy ít RAM. Gộp còn **một lượt/ảnh** đã cắt 28–45 s xuống 7.7 s/ảnh.
+   - ✅ **Đòn bẩy "bỏ lượt quét mặt không còn gì để đóng góp" đã làm và đã đo: 1.00 lượt/cặp thay vì 2 — cắt đúng 50% công nhận dạng, không mất trường nào** (15/15 thẻ vẫn đủ 6/6). Từ ~15.4 s/cặp xuống 9.5 s.
+   - 🎯 Ba hướng còn lại: (1) hạ `target_long_edge` rồi đo lại; (2) bỏ lượt đọc dải tiêu đề của bộ phân loại mặt khi QR/MRZ đã quyết; (3) bỏ lần giải mã QR trùng mà bộ phân loại mặt gọi thêm (~66 ms/ảnh — **đã cân nhắc và cố ý không làm**: mọi cách nhớ đệm an toàn đều phức tạp hơn 1.6% mà nó tiết kiệm).
+   - ⚠️ Máy đích thực tế **chưa biết**, và p95 từng lệch **1.7 lần** giữa hai lần chạy giống hệt nhau. Đừng chốt hay bác bỏ chỉ tiêu này bằng một lần chạy.
+9. ⚠️ **Đừng chạy pytest song song với script PaddleOCR** trên máy này — đã gây `OcrTimeoutError` giả hai lần trong một phiên (4 nhân / 4 GB). Cùng lý do, `ExtractionPipeline` khoá bộ nhận dạng tuần tự: hai lượt đồng thời sinh `Insufficient memory` **từ trong OpenCV**, trông như lỗi giải mã ảnh chứ không như hết bộ nhớ.
+10. ⭐ **Không suy "thế hệ thẻ" từ `anchor_patterns`.** Hai thế hệ khai chung phần lớn nhãn, và `Ngày, tháng, năm` (2021) là **tiền tố** của `Ngày, tháng, năm sinh` (2024) — đếm nhãn khớp là đo ảnh rõ tới đâu. Dùng `document_type.identity_markers` (cụm chỉ một thế hệ in). Đo: **43/44 đúng, 0 sai, 1 từ chối**.
+11. ⚠️ **Ràng buộc CSDL không tự đi theo tầng Domain.** `ck_ocr_field__tier_range` nằm ở 1..4 suốt một ngày sau khi tầng 5 ra đời, và tầng 5 giải 20/20 lần đọc `issue_place` — tức là ràng buộc cũ sẽ chặn gần như mọi dòng, **lúc INSERT, trong job nền**. `IssuePlaceNormalizer.MAX_TIER` + `tests/unit/migrations/test_constraint_names.py` giờ nối hai bên lại.
 
 ### Quy trình làm việc Giai đoạn 2
 

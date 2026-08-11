@@ -79,6 +79,15 @@ class NormalizationOutcome:
 class IssuePlaceNormalizer:
     """Domain Service — see module docstring for the 5-tier algorithm."""
 
+    MAX_TIER = 5
+    """⭐ The highest `tier` `normalize()` can return.
+
+    Named because it is a contract with the database, not a comment: the
+    `ck_ocr_field__tier_range` CHECK has to admit every value produced here,
+    and when the fifth tier was added on 2026-08-11 the constraint was left at
+    1..4. `tests/unit/migrations/test_constraint_names.py` compares the two.
+    """
+
     def __init__(self, alias_repository: IAliasRepository, document_type_code: str = "CCCD_CHIP") -> None:
         self._alias_repository = alias_repository
         self._document_type_code = document_type_code

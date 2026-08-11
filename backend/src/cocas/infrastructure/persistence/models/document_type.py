@@ -16,6 +16,16 @@ class DocumentTypeModel(UuidPkMixin, CreatedAtMixin, Base):
     field_schema: Mapped[list[dict[str, object]]] = mapped_column(JSONB, nullable=False)
     zone_map: Mapped[dict[str, object]] = mapped_column(JSONB, nullable=False)
     anchor_patterns: Mapped[dict[str, object]] = mapped_column(JSONB, nullable=False)
+    identity_markers: Mapped[list[str]] = mapped_column(
+        JSONB, nullable=False, server_default="[]"
+    )
+    """⭐ Phrases printed on this generation and no other (§7.4.7).
+
+    Deliberately NOT derived from `anchor_patterns`: both generations declare
+    `Full name`, `Date of birth` and `BỘ CÔNG AN` as anchors, so counting
+    anchor hits would rank photos by legibility rather than by card generation.
+    Read by `MarkerDocumentTypeSelector` (Port 19).
+    """
     has_qr: Mapped[bool] = mapped_column(Boolean, nullable=False)
     has_mrz: Mapped[bool] = mapped_column(Boolean, nullable=False)
     is_ocr_supported: Mapped[bool] = mapped_column(Boolean, nullable=False)

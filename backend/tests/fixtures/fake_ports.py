@@ -1,4 +1,4 @@
-"""Fake / null implementations of all 18 Ports.
+"""Fake / null implementations of all 19 Ports.
 
 ⭐ Architecture acceptance criterion (§12.19): *"Mỗi Port phải có ít nhất một
 hiện thực fake/null dùng trong test."* This module is where that criterion is
@@ -233,10 +233,21 @@ class FakeMrzReader:
 
 
 class FakeFieldExtractor:
-    """Port 7."""
+    """Port 7.
 
-    def __init__(self, fields: dict[FieldKey, RawFieldValue] | None = None) -> None:
+    Returns the same fields for either side unless `by_side` is given — most
+    tests only care that extraction happened, but the ones about lever 2 need
+    the front and the back to differ.
+    """
+
+    def __init__(
+        self,
+        fields: dict[FieldKey, RawFieldValue] | None = None,
+        by_side: dict[CardSide, dict[FieldKey, RawFieldValue]] | None = None,
+    ) -> None:
         self._fields = fields or {}
+        self._by_side = by_side
+        self.calls: list[tuple[CardSide, str]] = []
 
     def extract(
         self,
@@ -245,7 +256,24 @@ class FakeFieldExtractor:
         doc_type: DocumentTypeSpec,
         warp_succeeded: bool,
     ) -> dict[FieldKey, RawFieldValue]:
+        self.calls.append((side, doc_type.code))
+        if self._by_side is not None:
+            return dict(self._by_side.get(side, {}))
         return dict(self._fields)
+
+
+class FakeDocumentTypeSelector:
+    """Port 19 — answers with a fixed choice, or None for "cannot tell"."""
+
+    def __init__(self, choice: DocumentTypeSpec | None = None) -> None:
+        self.choice = choice
+        self.calls: list[int] = []
+
+    def select(
+        self, regions: list[TextRegion], candidates: Sequence[DocumentTypeSpec]
+    ) -> DocumentTypeSpec | None:
+        self.calls.append(len(regions))
+        return self.choice
 
 
 # ============================================================================

@@ -137,7 +137,7 @@ Mọi dòng code phải tuân thủ. Vi phạm = phải sửa, không phải tra
 | Endpoint API | **64** |
 | Wireframe | **8** |
 | Quy tắc validation | **56** |
-| Port (interface) | **18** |
+| Port (interface) | **19** ⭐ (`IDocumentTypeSelector` thêm ở P3 — §12.19.1) |
 | Use Case | **41** |
 | Thư viện Python | **39** |
 | Ước tính công | **12.5 tuần** (2 người) |

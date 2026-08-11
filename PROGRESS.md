@@ -12,7 +12,7 @@
 P0: Chuẩn bị        [====] ✅ DONE (2026-08-11)
 P1: Nền tảng        [====] ✅ DONE (2026-08-09)
 P2: OCR Module      [====] 🔄 MÃ NGUỒN XONG (4/4 tuần) — chờ Golden Set ⭐ Critical path
-P3: Nghiệp vụ       [    ] ⏳ TODO (3 tuần)
+P3: Nghiệp vụ       [=   ] 🔄 ĐANG LÀM — module 1/7 (ExtractionPipeline) xong 2026-08-11
 P4: Giao diện       [    ] ⏳ TODO (3 tuần)
 P5: Desktop         [    ] ⏳ TODO (2 tuần)
 P6: Hoàn thiện      [    ] ⏳ TODO (2 tuần)
@@ -333,12 +333,26 @@ Thẻ được **ghép từ chính dữ liệu, không từ tên file**: mọi �
 
 ---
 
-### ⏳ P3 — Nghiệp vụ & Sinh tài liệu (3 tuần)
-**Status:** TODO  
-**Est. Start:** 2026-09-23  
+### 🔄 P3 — Nghiệp vụ & Sinh tài liệu (3 tuần)
+**Status:** IN PROGRESS — bắt đầu 2026-08-11  
 **Est. Completion:** 2026-10-14
 
+**Thứ tự module đã chốt** (mỗi module: cấu trúc → mã → giải thích → chạy → test, xong mới sang cái sau):
+
+| # | Module | Trạng thái |
+|---|---|---|
+| 1 | ⭐ **`ExtractionPipeline`** (Application §12.3) — biến 7 Port của P2 thành một lời gọi | ✅ **2026-08-11** |
+| 2 | Alias repository + Use Case OCR + nối `container.py` | ⏳ |
+| 3 | `TemplateInspector` (AST Jinja2, 10 mã chẩn đoán, chặn SSTI) | ⏳ |
+| 4 | `RenderContextBuilder` + `DocxContextAdapter` + `DocxRenderer` + repo `Contract` (nợ từ P1) | ⏳ |
+| 5 | `PdfConverter` + `LibreOfficeManager` + font tiếng Việt | ⏳ |
+| 6 | `JobRunner` (polling bảng `job`) | ⏳ |
+| 7 | 64 endpoint + test tích hợp | ⏳ |
+
 **Deliverables:**
+- [x] ⭐ **`ExtractionPipeline`** — 9 chặng S3→S11, không bao giờ ném ngoại lệ, tiến độ mỗi chặng
+- [x] ⭐ **Port 19 `IDocumentTypeSelector`** + `MarkerDocumentTypeSelector` — nhận thế hệ thẻ từ chữ đã đọc
+- [x] ⭐ Migration `010` — cột `identity_markers` + 🔴 nới CHECK `tier_range` lên 1..5
 - [ ] Template Engine + RenderContextBuilder
 - [ ] DOCX Renderer (2 mẫu thật, STK in đậm)
 - [ ] PDF Converter (LibreOffice listener lười)
@@ -349,7 +363,36 @@ Thẻ được **ghép từ chính dữ liệu, không từ tên file**: mọi �
 **Milestones:**
 - M3: API tuần tự → PDF mở được, STK in đậm
 
+#### ⭐ Module 1 — `ExtractionPipeline` (2026-08-11)
+
+Đo thật trên **15 thẻ ghép đúng** (46 ảnh dùng được của bộ mẫu, ghép bằng số CCCD hai kênh chính xác cùng in — **không** ghép theo tên file):
+
+| Chỉ số | Kết quả |
+|---|---|
+| Thẻ đọc đủ 6/6 trường | **15/15** |
+| Ô phải review | **0** |
+| Độ tin cậy tổng | trung bình **0.99** (min 0.98) |
+| Lỗi validation | **0** |
+| ⭐ Lượt quét toàn thẻ | **1.00/cặp thay vì 2 — cắt đúng 50% công nhận dạng** |
+| 🔴 Thời gian mỗi **cặp** | trung bình **9.5 s**, p95 **12.4 s** — ngân sách 9 s |
+| ⭐ Port 19 (quét riêng 46 ảnh) | **43/44 quyết định đúng · 0 sai · 1 từ chối trả lời** |
+
+Test: **1228 xanh** (từ 1155) · ruff sạch · `mypy --strict` sạch · import-linter 4/4.
+
+**Phát hiện #35 — bẫy mẫu số lại xuất hiện, lần này ở chính bộ đo.** Bản đầu của `verify_pipeline.py` ghép ảnh theo **tên file liền nhau**. Kết quả trông như lỗi pipeline: 23/26 cặp báo `SOURCE_CONFLICT`, `id_number` tin cậy trung bình 0.68, và **không nhận ra một thẻ Căn cước 2024 nào**. Thực tế là hai ảnh của hai người khác nhau bị đưa vào `execute()` như một thẻ. `verify_extraction.py` đã ghi rõ cách ghép đúng ngay trong docstring của nó — và vẫn bị lặp lại. Sau khi sửa: 15/15 thẻ, 6/6 trường, 0 xung đột.
+
+**Phát hiện #36 — 🔴 `ck_ocr_field__tier_range` vẫn là 1..4 trong khi tầng 5 đã chạy từ hôm trước.** Tầng 5 giải **20/20** lần đọc `issue_place` trong bộ mẫu, nghĩa là ràng buộc cũ sẽ từ chối gần như **mọi** dòng `ocr_field` — lúc INSERT, trong job nền, sau khi đã trả toàn bộ chi phí OCR. Không lộ ra khi đọc mã vì hai bên nằm ở hai tầng khác nhau và không có gì nối chúng. Đã nới bằng migration `010`, thêm hằng số `IssuePlaceNormalizer.MAX_TIER`, và thêm `tests/unit/migrations/test_constraint_names.py` so hai bên **không cần CSDL** (test đó cũng kiểm mọi `op.drop_constraint` có trỏ tới ràng buộc thật hay không).
+
+**Phát hiện #37 — không dùng `anchor_patterns` để nhận thế hệ thẻ.** Ý tưởng "chấm điểm anchor của từng thế hệ" đẹp trên giấy và sai trên dữ liệu: hai thế hệ khai chung `Full name`, `Date of birth`, `BỘ CÔNG AN`, và `Ngày, tháng, năm` (2021) là **tiền tố** của `Ngày, tháng, năm sinh` (2024). Đếm anchor khớp là đo **ảnh rõ tới đâu**. Dùng danh sách marker đã đo sẵn ở tuần 3b, đưa vào cột `document_type.identity_markers`.
+
+**Điểm mù còn lại của module 1:**
+- ⚠️ **Chưa đo được pipeline trên một thẻ Căn cước 2024 nào.** Thế hệ đó in QR **cạnh** MRZ ở mặt sau, nên mặt trước không có kênh chính xác nào ⇒ không sinh số CCCD ⇒ **không ghép cặp được bằng phương pháp hiện tại**. Đã bù bằng `--selector-sweep` đo riêng Port 19 trên từng ảnh (6/7 ảnh 2024 nhận đúng), nhưng toàn chuỗi trên thẻ 2024 vẫn là **chưa đo**.
+- ⚠️ Ca Port 19 từ chối trả lời là một **mặt sau 2024** chữ nhoè. Tín hiệu **cấu trúc** (một ảnh mang cả QR lẫn MRZ ⇒ mặt sau 2024) giải được, nhưng Port 19 chỉ nhận `regions`. Vá được bằng cách thêm "thế hệ này in QR ở mặt nào" vào `document_type` — hoãn có chủ đích (P-10).
+- ⚠️ **Chưa chạy migration `010` trên PostgreSQL thật** — cụm portable ở cổng 55432 không chạy trên máy này. Test tĩnh đã kiểm tên ràng buộc và dải tầng, nhưng `upgrade head` thật vẫn là việc phải làm ở module 2.
+
 **Risks:**
+- 🔴 **p95 12.4 s/cặp so với ngân sách 9 s.** Đòn bẩy 2 đã cắt từ ~15.4 s xuống 9.5 s trung bình; phần còn lại nằm trong **bản thân lượt quét**. Ba hướng chưa thử: hạ `target_long_edge`; bỏ lượt đọc dải tiêu đề của bộ phân loại mặt khi QR/MRZ đã quyết; bỏ lần giải mã QR trùng mà bộ phân loại mặt gọi thêm (~66 ms/ảnh, đã đo, **cố ý chưa làm** vì mọi cách lấy an toàn đều phức tạp hơn phần lợi).
+  - ⚠️ Máy đích thật vẫn **chưa biết**, và p95 từng lệch 1.7 lần giữa hai lần chạy giống hệt nhau. Đừng chốt hay bác bỏ chỉ tiêu này bằng một lần chạy.
 - 🟠 LibreOffice thiếu font tiếng Việt
   - 🎯 Đầu P3: đóng gói font, test đầy đủ
 

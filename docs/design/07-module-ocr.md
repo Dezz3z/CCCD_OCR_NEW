@@ -619,6 +619,19 @@ Toàn chuỗi S3→S11 sau khi thêm tầng 5: `issue_place` **20/20 thẻ** (tr
 
 **`ExtractionPipeline` không bao giờ ném ngoại lệ ra ngoài** — mọi lỗi được gói vào `ExtractionResult.error_code` và `status`. Lý do: pipeline chạy trong job nền; ngoại lệ lọt ra sẽ làm chết worker.
 
+### ⭐ 7.7.1. Bốn chỗ "không bao giờ ném" phải tự bảo vệ (triển khai P3)
+
+Bất biến trên chỉ có nghĩa nếu **mọi** đường thoát đều được chặn, kể cả những đường mà đặc tả cấm sẵn. Bốn chỗ dưới đây đều đã có test riêng:
+
+| Chỗ | Vì sao vẫn phải bọc |
+|---|---|
+| `IQrDecoder.decode` | §7.3 **cấm** port này ném. Nhưng "cấm" là hợp đồng, không phải bảo đảm — một adapter lỗi vẫn ném được, và mất kênh QR không đáng để mất luôn MRZ với OCR |
+| `progress` callback | Người ghi tiến độ là **của người gọi**. Nó chết mà kéo theo cả lần trích xuất đã thành công thì đúng là thứ bất biến này sinh ra để ngăn |
+| `MemoryError` | Phải bắt **trước** `Exception` (nó là một `Exception`). §7.7 xếp loại chí mạng, và đây là lỗi hay đến từ chỗ không ai đặt máy đo nhất |
+| `Exception` cuối cùng | Lưới cuối. Gói thành `error_code="UNEXPECTED_ERROR"` kèm tên ngoại lệ trong `diagnostics` |
+
+⚠️ `asyncio.CancelledError` **không** bị nuốt — nó kế thừa `BaseException` từ Python 3.8, nên huỷ job vẫn huỷ được.
+
 ---
 
 ## 7.8. Lộ trình nâng cao độ chính xác

@@ -104,6 +104,15 @@ class DocumentTypeSpec:
     has_mrz: bool
     is_ocr_supported: bool
     expected_aspect_ratio: float
+    identity_markers: tuple[str, ...] = ()
+    """⭐ Phrases printed on **this generation and no other** (§7.4.7).
+
+    Distinct from `anchor_patterns`, which both generations largely share —
+    see `MarkerDocumentTypeSelector` for why reusing the anchors here measures
+    photo legibility instead of card generation. Empty means "do not use this
+    row in generation selection", which is the right default for a type that
+    is the only one of its kind.
+    """
 
 
 class SideVerdict(str, Enum):
@@ -352,3 +361,28 @@ class IFieldExtractor(Protocol):
         doc_type: DocumentTypeSpec,
         warp_succeeded: bool,
     ) -> dict[FieldKey, RawFieldValue]: ...
+
+
+@runtime_checkable
+class IDocumentTypeSelector(Protocol):
+    """⭐ Port 19 — which `document_type` row the card in front of us actually is.
+
+    Exists because **the user cannot be asked**. Both card generations are in
+    circulation and they print different things in different places (§7.4.7),
+    so a session that declares `CCCD_CHIP` and receives a Căn cước 2024 would
+    extract every field through the wrong `zone_map` — which produces confident
+    wrong values, the one outcome §7.9 blocks releases over.
+
+    ⭐ Judges from text **already recognized**, never by recognizing again: a
+    second whole-card pass costs more than every other stage combined
+    (§7.4.6 finding 20).
+
+    Returns the best-matching candidate, or `None` when the evidence does not
+    separate them — the caller then keeps whatever the session declared.
+    """
+
+    def select(
+        self,
+        regions: list[TextRegion],
+        candidates: Sequence[DocumentTypeSpec],
+    ) -> DocumentTypeSpec | None: ...

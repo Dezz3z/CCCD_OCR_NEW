@@ -16,13 +16,19 @@
 | **S4** | Phân loại mặt trước/sau | 2 ảnh | Nhãn `FRONT`/`BACK` + độ tin cậy | Async | `NEEDS_REUPLOAD` |
 | **S5** | Kênh QR | ⭐ Ảnh mang QR (mặt trước ở CCCD 2021, **mặt sau** ở Căn cước 2024) | Dict trường + conf = 1.00 | Async | Bỏ qua kênh |
 | **S6** | Kênh MRZ | Ảnh mặt sau | Dict trường + checksum status | Async | Bỏ qua kênh |
-| **S7** | Kênh OCR | 2 ảnh (hoặc ROI) | `[(bbox, text, conf)]` | Async | `FAILED` nếu cả 3 kênh chết |
+| **S7** | Kênh OCR | ⭐ **Chỉ những ảnh còn trường chưa đọc được** (xem ghi chú) | `[(bbox, text, conf)]` | Async | Suy giảm — QR/MRZ vẫn đứng |
 | **S8** | Trích xuất trường | Text OCR + layout | 6 trường thô | Async | Trường = null, conf = 0 |
 | **S9** | Chuẩn hoá | Trường thô | Trường đã chuẩn hoá | Async (Domain) | Giữ giá trị thô + cờ |
 | **S10** | Hợp nhất & tính tin cậy | 3 nguồn | 6 trường cuối + conf + source | Async (Domain) | — |
 | **S11** | Validation OCR | 6 trường cuối | Danh sách lỗi/cảnh báo có mã | Async (Domain) | `COMPLETED_WITH_WARNINGS` |
 | **S12** | Xác nhận & bổ sung | Dữ liệu OCR + form | `customer` + `bank_account` | Sync | HTTP 422 |
 | **S13** | Sinh hợp đồng | `customer` + `template_version` | DOCX → PDF | Sync (DOCX) + Async (PDF) | `GENERATION_FAILED` / `PDF_FAILED` |
+
+> ⭐ **S7 không còn quét cả hai ảnh, và thứ tự chạy đã đổi theo (triển khai P3, §12.3.1).** S9 chạy **trước** cho hai kênh chính xác, để S7 biết mặt nào còn trường chưa đọc được mà quét. Trên thẻ có cả QR lẫn MRZ tốt, mặt mang QR không còn gì để đóng góp — QR cho `id_number`/`full_name`/`date_of_birth`/`issue_date`, MRZ thêm `expiry_date` — nên **bỏ hẳn lượt quét mặt đó**. Đo 15 thẻ thật: **1.00 lượt/cặp thay vì 2, vẫn đủ 6/6 trường trên 15/15 thẻ**.
+>
+> Mặt sau **không bao giờ** bị bỏ, vì `issue_place` không có kênh chính xác nào đọc được. Đó là tính chất của dữ liệu, không phải luật cứng trong mã: quyết định đọc từ `zone_map`, nên một `document_type` mới in trường ở chỗ khác vẫn đúng mà không phải sửa mã (NFR-10).
+>
+> ⚠️ Bản đồ mặt→trường lấy **hợp của mọi thế hệ ứng viên**, vì lúc đó chưa biết thẻ thuộc thế hệ nào — và hai thế hệ in `expiry_date` ở hai mặt khác nhau (§7.4.7). Dùng thế hệ đã khai báo ở đây sẽ khiến một phiên khai nhầm bỏ đúng lượt quét lẽ ra nhận ra nó là thế hệ kia.
 
 ---
 
