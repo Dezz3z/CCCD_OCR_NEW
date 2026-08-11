@@ -20,7 +20,7 @@
 | **DB-06** | **Blind index cho tra cứu trên trường mã hoá** | `*_bidx` = `HMAC-SHA256(pepper, normalize(value))[0:16]` |
 | **DB-07** | **Dữ liệu tham chiếu nằm trong bảng, không trong code** | Alias chuẩn hoá, danh mục ngân hàng, mã tỉnh, loại giấy tờ — admin sửa qua UI (P-06) |
 | **DB-08** | **Nhật ký hoạt động append-only** | Vai trò CSDL của ứng dụng chỉ có `SELECT`, `INSERT` trên `activity_log` |
-| **DB-09** | **Khoá lạc quan chỉ nơi có tranh chấp thật** | ⭐ Chỉ `contract` có cột `version` (tranh chấp giữa job PDF nền và thao tác huỷ) |
+| **DB-09** | **Khoá lạc quan chỉ nơi có tranh chấp thật** | ⭐ Chỉ `contract` có cột `version` (tranh chấp giữa thao tác sinh lại và thao tác huỷ) |
 | **DB-10** | **Ràng buộc ở CSDL, không chỉ ở code** | CSDL là tuyến phòng thủ cuối cùng |
 | **DB-11** | **Tên bảng số ít, snake_case, tiếng Anh** | `customer` không phải `customers` |
 | **DB-12** | **Mọi timestamp là `TIMESTAMPTZ`, lưu UTC** | Presentation quy đổi sang giờ Việt Nam |
@@ -44,7 +44,7 @@ erDiagram
     CONTRACT_TEMPLATE ||--o| TEMPLATE_VERSION  : "active_version_id"
     TEMPLATE_VERSION  ||--o{ CONTRACT          : "được dùng để sinh"
     CONTRACT          ||--|{ CONTRACT_PARTY    : "gồm N bên (v1.0: 1)"
-    CONTRACT          ||--|{ CONTRACT_DOCUMENT : "có DOCX và PDF"
+    CONTRACT          ||--|| CONTRACT_DOCUMENT : "có đúng 1 DOCX"
     CONTRACT          ||--o| CONTRACT          : "supersedes (tự tham chiếu)"
     BANK_ACCOUNT      ||--o{ CONTRACT_PARTY    : "TK của bên"
 
@@ -443,11 +443,11 @@ erDiagram
 | `OcrSessionStatus` | `ocr_session.status` | `CREATED`, `QUEUED`, `PROCESSING`, `COMPLETED`, `COMPLETED_WITH_WARNINGS`, `NEEDS_REUPLOAD`, `NEEDS_MANUAL_ASSIGN`, `FAILED`, `CONFIRMED`, `CONSUMED`, `CANCELLED` |
 | `FieldKey` | `ocr_field.field_key` | `full_name`, `id_number`, `date_of_birth`, `issue_date`, `expiry_date`, `issue_place` |
 | `FieldSource` | `ocr_field.source` | `QR`, `MRZ`, `OCR`, `MANUAL`, `NONE` |
-| `JobType` | `job.job_type` | `OCR`, `PDF_CONVERT`, `BACKUP`, `RETENTION_PURGE`, `ORPHAN_SWEEP`, `TEMPLATE_VALIDATE` |
+| `JobType` | `job.job_type` | ⭐ **5 giá trị** (D2.1 bỏ `PDF_CONVERT`): `OCR`, `BACKUP`, `RETENTION_PURGE`, `ORPHAN_SWEEP`, `TEMPLATE_VALIDATE` |
 | `JobStatus` | `job.status` | `QUEUED`, `RUNNING`, `SUCCEEDED`, `FAILED`, `CANCELLED` |
-| `ContractStatus` | `contract.status` | `DRAFT`, `GENERATING`, `DOCX_READY`, `PDF_CONVERTING`, `COMPLETED`, `GENERATION_FAILED`, `PDF_FAILED`, `SUPERSEDED`, `VOIDED` |
+| `ContractStatus` | `contract.status` | ⭐ **6 giá trị** (D2.1 bỏ `DOCX_READY`, `PDF_CONVERTING`, `PDF_FAILED`): `DRAFT`, `GENERATING`, `COMPLETED`, `GENERATION_FAILED`, `SUPERSEDED`, `VOIDED` |
 | `EntityType` | `contract_party.entity_type` | ⭐ v1.0: `INDIVIDUAL` · sau: + `ORGANIZATION` |
-| `DocType` | `contract_document.doc_type` | `DOCX`, `PDF` |
+| `DocType` | `contract_document.doc_type` | ⭐ **1 giá trị** (D2.1 bỏ `PDF`): `DOCX` |
 | `IssuePlace` | `customer.issue_place` | `BỘ CÔNG AN`, `CỤC CẢNH SÁT QUẢN LÝ HÀNH CHÍNH VỀ TRẬT TỰ XÃ HỘI` |
 | `Gender` | `customer.gender` | `NAM`, `NỮ`, `KHÁC`, `UNKNOWN` |
 | `DataQuality` | `customer.data_quality` | `OCR_VERIFIED`, `MANUAL`, `MIXED` |
@@ -775,12 +775,11 @@ erDiagram
 |---|---|---|---|
 | `id` | UUID | PK | |
 | `contract_id` | UUID | NOT NULL, FK ON DELETE CASCADE | |
-| `doc_type` | VARCHAR(10) | NOT NULL, CHECK ∈ {DOCX, PDF} | |
+| `doc_type` | VARCHAR(10) | NOT NULL, CHECK ∈ {DOCX} | ⭐ D2.1: chỉ còn một giá trị. Giữ cột vì `uq_contract_document__type` là thứ chặn ghi 2 bản ghi cho cùng hợp đồng |
 | `file_path` | VARCHAR(300) | NOT NULL | Tương đối trong Vault |
 | `file_sha256` | BYTEA(32) | NOT NULL | ⭐ Kiểm **mỗi lần tải xuống** |
 | `file_size_bytes` | BIGINT | NOT NULL | |
-| `page_count` | SMALLINT | NULL | Chỉ PDF |
-| `generator` | VARCHAR(60) | NOT NULL | `docxtpl 0.18.0` / `LibreOffice 7.6.4` |
+| `generator` | VARCHAR(60) | NOT NULL | `docxtpl 0.18.0` |
 | `generation_ms` | INTEGER | NOT NULL | |
 | `download_count` | INTEGER | NOT NULL DEFAULT 0 | |
 | `last_downloaded_at` | TIMESTAMPTZ | NULL | |
@@ -951,9 +950,6 @@ erDiagram
 | `backup.keep_count` | `14` | BACKUP |
 | `backup.warn_after_days` | `7` | BACKUP |
 | `backup.encrypt` | `true` | BACKUP |
-| `document.pdf_converter` | `"libreoffice"` | DOCUMENT |
-| `document.libreoffice_timeout_sec` | `60` | DOCUMENT |
-| `document.libreoffice_idle_shutdown_min` | `20` | DOCUMENT |
 | `export.strip_diacritics` | `false` | DOCUMENT |
 | `ui.date_format` | `"dd/MM/yyyy"` | UI |
 | `ui.theme` | `"system"` | UI |
@@ -1076,7 +1072,7 @@ requires_images:        false
 | 8 | `contract_template` → `template_version` (qua `active_version_id`) | 1 : 0..1 | SET NULL | ⭐ **Quan hệ vòng có chủ ý** — xử lý bằng thứ tự insert (tạo version trước, update `active_version_id` sau) |
 | 9 | `template_version` → `contract` | 1 : N | **RESTRICT** | ⭐ Hợp đồng trỏ **phiên bản cụ thể** — mấu chốt để tái lập hợp đồng cũ |
 | 10 | `contract` → `contract_party` | **1 : N** (v1.0 luôn = 1) | CASCADE | ⭐ Bảng bản lề |
-| 11 | `contract` → `contract_document` | **1 : 0..2** | CASCADE | Tối đa 1 DOCX + 1 PDF |
+| 11 | `contract` → `contract_document` | ⭐ **1 : 0..1** | CASCADE | D2.1: tối đa 1 DOCX |
 | 12 | `contract` → `contract` (`supersedes_id`) | tự tham chiếu 1 : 0..1 | SET NULL | ⭐ Chuỗi phiên bản. Bản cũ chuyển `SUPERSEDED` nhưng **vẫn giữ file** |
 | 13 | `document_type` → `ocr_session` / `card_image` | 1 : N | RESTRICT | Điểm mở rộng loại giấy tờ |
 | 14 | `document_type` → `normalization_alias` | 1 : N | CASCADE | Mỗi loại giấy tờ có từ điển riêng |
@@ -1283,13 +1279,14 @@ tag(16)
 | `contract` + `contract_party` (snapshot ~3 KB) | ~4.5 KB | 4.5 MB | 45 MB |
 | `activity_log` (~25 bản ghi/HĐ × 1.5 KB) | ~38 KB | 38 MB | 380 MB |
 | File DOCX | ~45 KB | 45 MB | 450 MB |
-| File PDF | ~180 KB | 180 MB | 1.8 GB |
 | Thumbnail (2 ảnh) | ~30 KB | 30 MB | 300 MB |
 | Ảnh gốc *(nếu KHÔNG xoá)* | ~2.5 MB | 2.5 GB | 25 GB |
-| **Tổng — mặc định (xoá ảnh)** | | **≈ 310 MB** | **≈ 3.1 GB** |
-| **Tổng — giữ ảnh vĩnh viễn** | | **≈ 2.8 GB** | **≈ 28 GB** |
+| **Tổng — mặc định (xoá ảnh)** | | ⭐ **≈ 130 MB** | ⭐ **≈ 1.3 GB** |
+| **Tổng — giữ ảnh vĩnh viễn** | | ⭐ **≈ 2.6 GB** | ⭐ **≈ 26 GB** |
 
-> ⭐ **Chính sách xoá ảnh (ADR-12/P-05) không chỉ là bảo mật — nó giảm dung lượng 9 lần.** Đây là lý do nó phải là mặc định, và tại sao Cài đặt phải cảnh báo rõ khi admin chọn `KEEP_FOREVER`.
+> ⭐ **D2.1 — bỏ PDF cắt 180 MB/1000 hợp đồng**, tức hơn một nửa dung lượng ở chế độ mặc định (310 → 130 MB).
+
+> ⭐ **Chính sách xoá ảnh (ADR-12/P-05) không chỉ là bảo mật — nó giảm dung lượng ~20 lần** *(9 lần trước D2.1: khi phần "không phải ảnh" nhỏ đi thì tỉ lệ này lớn lên, không nhỏ đi)*. Đây là lý do nó phải là mặc định, và tại sao Cài đặt phải cảnh báo rõ khi admin chọn `KEEP_FOREVER`.
 
 ---
 

@@ -169,7 +169,7 @@ class TestInMemoryJobQueue:
 
     async def test_cancel_queued_job(self) -> None:
         queue = InMemoryJobQueue()
-        job_id = await queue.enqueue(JobType.PDF_CONVERT)
+        job_id = await queue.enqueue(JobType.TEMPLATE_VALIDATE)
         assert await queue.cancel(job_id) is True
         status = await queue.get_status(job_id)
         assert status is not None

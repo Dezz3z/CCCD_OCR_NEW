@@ -22,7 +22,7 @@
 | **S10** | Hợp nhất & tính tin cậy | 3 nguồn | 6 trường cuối + conf + source | Async (Domain) | — |
 | **S11** | Validation OCR | 6 trường cuối | Danh sách lỗi/cảnh báo có mã | Async (Domain) | `COMPLETED_WITH_WARNINGS` |
 | **S12** | Xác nhận & bổ sung | Dữ liệu OCR + form | `customer` + `bank_account` | Sync | HTTP 422 |
-| **S13** | Sinh hợp đồng | `customer` + `template_version` | DOCX → PDF | Sync (DOCX) + Async (PDF) | `GENERATION_FAILED` / `PDF_FAILED` |
+| **S13** | Sinh hợp đồng | `customer` + `template_version` | ⭐ DOCX *(D2.1: không còn PDF)* | ⭐ Sync hoàn toàn | `GENERATION_FAILED` |
 
 > ⭐ **S7 không còn quét cả hai ảnh, và thứ tự chạy đã đổi theo (triển khai P3, §12.3.1).** S9 chạy **trước** cho hai kênh chính xác, để S7 biết mặt nào còn trường chưa đọc được mà quét. Trên thẻ có cả QR lẫn MRZ tốt, mặt mang QR không còn gì để đóng góp — QR cho `id_number`/`full_name`/`date_of_birth`/`issue_date`, MRZ thêm `expiry_date` — nên **bỏ hẳn lượt quét mặt đó**. Đo 15 thẻ thật: **1.00 lượt/cặp thay vì 2, vẫn đủ 6/6 trường trên 15/15 thẻ**.
 >
@@ -48,7 +48,6 @@
 | 0.6 | Đọc `parties[].extra_fields[]` → sinh ô nhập động (ví dụ `securities_account_no`) |
 | 0.7 | Đọc `contract_fields[]` → nếu rỗng thì **bỏ qua bước "Thông tin hợp đồng"** |
 | 0.8 | Hiển thị khối "Mẫu đã chọn cần chuẩn bị" |
-| 0.9 | ⭐ Khởi động LibreOffice listener ở luồng nền (để lúc sinh PDF thì đã ấm) |
 
 **Kết quả cho 2 mẫu hiện tại:**
 
@@ -378,7 +377,7 @@ Chi tiết 23 quy tắc: xem [08-validation.md](08-validation.md).
 ### S13 — Sinh hợp đồng
 
 - ⭐ **Snapshot bất biến:** toàn bộ context render lưu vào `contract.render_snapshot_enc` (JSONB mã hoá). Khách đổi SĐT sau này, hợp đồng cũ vẫn tái tạo y hệt.
-- ⭐ **Tách DOCX và PDF thành 2 giao dịch:** DOCX đồng bộ (~500 ms) → trả `201` ngay; PDF bất đồng bộ → UI hiện spinner riêng.
+- ⭐ **D2.1 — sinh tài liệu là MỘT giao dịch đồng bộ:** `.docx` xong sau ~500 ms và hợp đồng vào thẳng `COMPLETED`. Không còn spinner thứ hai, không còn trạng thái nửa vời để UI phải diễn giải.
 - ⭐ **Kiểm tra toàn vẹn sau khi ghi:** đọc lại file, tính SHA-256, so với giá trị lúc ghi. Chỉ khi khớp mới chuyển trạng thái.
 
 ---
@@ -397,7 +396,7 @@ Chi tiết 23 quy tắc: xem [08-validation.md](08-validation.md).
 | ALT-08 | CCCD đã tồn tại | S12 | Hỏi cập nhật hay tạo mới | Dialog so sánh dữ liệu cũ ↔ mới |
 | ALT-09 | Template thiếu biến bắt buộc | S13 | `422` + danh sách biến thiếu **có nhãn tiếng Việt** | Hiện tên biến và gợi ý sửa |
 | ALT-10 | Template có biến không xác định | Lúc đăng ký | Cảnh báo, không chặn | Bảng đối chiếu biến |
-| ALT-11 | LibreOffice không phản hồi | S13 | Kill cây tiến trình, retry ×3 backoff, rồi `PDF_FAILED` | ⭐ DOCX vẫn tải được + nút "Thử lại tạo PDF" |
+| ALT-11 | ⭐ *(D2.1 — bỏ: nhánh này chỉ tồn tại vì khâu chuyển PDF)* | — | — | — |
 | ALT-12 | Hết dung lượng đĩa | S1/S13 | `507`, rollback | Thông báo kèm dung lượng còn lại + nút mở thư mục |
 | ALT-13 | Mất điện giữa chừng | Lúc khởi động | Job `RUNNING` quá `heartbeat` 5 phút → `FAILED` | "Công việc bị gián đoạn" ở Dashboard |
 | ALT-14 | Model OCR không nạp được | Lúc khởi động | Health `DEGRADED`; cho phép **nhập tay hoàn toàn** | Banner cảnh báo, hệ thống vẫn dùng được |
@@ -442,7 +441,7 @@ flowchart LR
 | Số tài khoản NH | Nhạy cảm cấp 1 | Vĩnh viễn | ✅ field-level | Như trên |
 | Họ tên, SĐT, Email, STK CK | Cấp 2 | Vĩnh viễn | ❌ (cần cho tìm kiếm) | Như trên |
 | Text OCR thô | Cấp 2 | 180 ngày | ✅ | Có |
-| File DOCX/PDF hợp đồng | Nhạy cảm cấp 1 | Vĩnh viễn (chứng từ) | ✅ | Chỉ khi VOIDED + xác nhận |
+| File DOCX hợp đồng | Nhạy cảm cấp 1 | Vĩnh viễn (chứng từ) | ✅ | Chỉ khi VOIDED + xác nhận |
 | `render_snapshot` | Nhạy cảm cấp 1 | Vĩnh viễn | ✅ | Cùng hợp đồng |
 | Nhật ký hoạt động | Nội bộ | ⭐ ≥ 5 năm, sau đó xuất + lưu trữ lạnh | ❌ (đã che PII) | Chỉ sau khi xuất |
 | Log ứng dụng | Nội bộ | 30 ngày, xoay vòng | ❌ | Tự động |

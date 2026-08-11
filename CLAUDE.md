@@ -10,7 +10,9 @@ Hệ thống Desktop tự động tạo hợp đồng từ ảnh CCCD, chạy ho
 >
 > **Nếu thực tế bắt buộc làm khác thiết kế → SỬA TÀI LIỆU TRƯỚC, VIẾT CODE SAU.**
 
-Bắt đầu từ [`docs/design/README.md`](docs/design/README.md) — mục lục 14 tài liệu, phiên bản **D2.0**.
+Bắt đầu từ [`docs/design/README.md`](docs/design/README.md) — mục lục 14 tài liệu, phiên bản **D2.1**.
+
+> ⭐ **D2.1 (2026-08-11) — KHÔNG XUẤT PDF.** `.docx` là đầu ra duy nhất; LibreOffice bị gỡ khỏi ngăn xếp, gói cài đặt và mọi cấu hình. Đảo ngược ADR-05. Lý do đầy đủ: [`09-template-va-tai-lieu.md §9.13`](docs/design/09-template-va-tai-lieu.md).
 
 | Khi làm việc với | Đọc |
 |---|---|
@@ -21,7 +23,7 @@ Bắt đầu từ [`docs/design/README.md`](docs/design/README.md) — mục l�
 | Màn hình, component, phím tắt | `06-giao-dien.md` |
 | Pipeline OCR, QR/MRZ, fusion | `07-module-ocr.md` |
 | Regex, quy tắc validation | `08-validation.md` |
-| Template, DOCX, PDF, tên file | `09-template-va-tai-lieu.md` |
+| Template, DOCX, tên file | `09-template-va-tai-lieu.md` |
 | Bảo mật, logging, nhật ký | `10-bao-mat-va-logging.md` |
 | Cây thư mục, thư viện | `11-cau-truc-va-thu-vien.md` |
 | Interface, tiền/hậu điều kiện, bất biến | `12-dac-ta-module.md` |
@@ -38,12 +40,12 @@ Vi phạm = phải sửa, không phải tranh luận.
 |---|---|
 | **P-01** | **Offline-First** — không chỉ "không gọi Internet" mà **không có khả năng** gọi |
 | **P-02** | **Dependency Rule** — Presentation → Application → Domain. Domain không import gì bên ngoài |
-| **P-03** | **Replaceable Engines** — OCR/Storage/Render/PDF/Queue đều là Port |
+| **P-03** | **Replaceable Engines** — OCR/Storage/Render/Queue đều là Port |
 | **P-04** | **Extraction ≠ OCR** — hợp nhất 3 kênh QR/MRZ/OCR |
 | **P-05** | **Data Minimization** — xoá ảnh gốc sau khi sinh hợp đồng |
 | **P-06** | **Template-Driven** — thêm mẫu = upload `.docx` + khai báo, không sửa code |
 | **P-07** | **Everything is Logged** |
-| **P-08** | **Fail Loud, Degrade Gracefully** — OCR chết vẫn nhập tay được; PDF chết vẫn có DOCX |
+| **P-08** | **Fail Loud, Degrade Gracefully** — OCR chết vẫn nhập tay được |
 | **P-09** | **Deterministic** — snapshot bất biến, in lại sau 5 năm giống bản gốc |
 | **P-10** | **Radical Simplicity** — không xây cho quy mô không tồn tại |
 | **P-11** | **Windows là lớp xác thực** — không có đăng nhập, không mật khẩu ứng dụng |
@@ -66,16 +68,16 @@ Vi phạm = phải sửa, không phải tranh luận.
 
 ---
 
-## Quy mô hệ thống (D2.0)
+## Quy mô hệ thống (D2.1)
 
 | | Số lượng |
 |---|---|
 | Bảng CSDL | **19** |
-| Endpoint API | **64** |
+| Endpoint API | ⭐ **62** *(D2.1: −2 endpoint PDF)* |
 | Wireframe | **8** |
 | Quy tắc validation | **56** |
-| Port (interface) | **19** ⭐ |
-| Thư viện Python | **39** |
+| Port (interface) | ⭐ **18** *(đánh số 1–19, **khuyết 13** — `IPdfConverter` gỡ ở D2.1)* |
+| Thư viện Python | **38** *(D2.1 bỏ `pypdf`)* |
 | Wizard | **3 bước** |
 | Mẫu hợp đồng | **2** (`01A_HD_GDN`, `01A_GDKQ`) |
 | ⭐ Thế hệ thẻ hỗ trợ | **2** (`CCCD_CHIP` 2021, `CAN_CUOC_2024`) |
@@ -91,7 +93,7 @@ Vi phạm = phải sửa, không phải tranh luận.
 | Backend | Python 3.11+ · FastAPI · Pydantic v2 · Uvicorn (**1 worker**) |
 | OCR | PaddleOCR PP-OCRv4 (CPU, offline) + OpenCV + zxing-cpp |
 | CSDL | PostgreSQL 16 portable `127.0.0.1:55432` · SQLAlchemy 2.0 async · Alembic |
-| Tài liệu | docxtpl (Jinja2 **sandboxed**) + LibreOffice headless CLI |
+| Tài liệu | docxtpl (Jinja2 **sandboxed**) — ⭐ **chỉ `.docx`, không PDF** |
 | Logging | Loguru (JSON có cấu trúc, **che PII bắt buộc**) |
 | Mã hoá | cryptography (AES-256-GCM) + Windows DPAPI |
 | Đóng gói | PyInstaller (**onedir**) + NSIS |
@@ -124,22 +126,22 @@ Vi phạm = phải sửa, không phải tranh luận.
 
 ## Trạng thái hiện tại
 
-**Giai đoạn 1 (Thiết kế): ✅ HOÀN THÀNH** — tài liệu D2.0 đã đóng băng, 0 lỗi kiến trúc đã biết.
+**Giai đoạn 1 (Thiết kế): ✅ HOÀN THÀNH** — tài liệu **D2.1** (D2.0 + gỡ PDF), 0 lỗi kiến trúc đã biết.
 
 **Giai đoạn 2 (Triển khai): P0 ✅ + P1 ✅ HOÀN THÀNH (2026-08-09). P2 (OCR) mã nguồn ✅ xong 2026-08-11 — tuần 1 (tiền xử lý ảnh) + tuần 2 (kênh QR/MRZ) + tuần 3 (engine + phân loại mặt + trích trường) + tuần 3b (thế hệ thẻ thứ hai) + tuần 4 (chuẩn hoá + hợp nhất + validation) + tầng 5 `issue_place`. Còn lại của P2 là Golden Set.**
 
-⭐ **P3 (Nghiệp vụ) ĐANG LÀM — module 1/7 xong 2026-08-11: `ExtractionPipeline`. 1228 test xanh.**
+⭐ **P3 (Nghiệp vụ) ĐANG LÀM — module 2/6 xong 2026-08-11.** Module 1 `ExtractionPipeline`; module 2 alias/document-type/ocr-result repository + `ProcessOcrSessionUseCase` + nối `container.py`. ⭐ **D2.1 gỡ hẳn module 5 (PDF/LibreOffice) khỏi kế hoạch.** **1251 test xanh.**
 Chi tiết đầy đủ từng module — xem [progress.md](progress.md) (cập nhật theo từng module, không rút gọn).
 
 ### Kiến trúc đã triển khai (P0 + P1 + P2 + P3 module 1)
 
 | Tầng | Trạng thái |
 |---|---|
-| `domain/` | ✅ Đầy đủ — 10 Value Object · 14 enum · 8 Entity · **7 Domain Service** (⭐ `IssuePlaceNormalizer` **5 tầng** với `issue_place_shape.py`) · ⭐ **19 Port** (+ fake/null cho mỗi Port) · cây ngoại lệ · ⭐ **`validation/`**: `ValidationEngine` + registry 4 tập quy tắc + **23 quy tắc `V-OCR-*`** (3 tập còn lại đăng ký **rỗng**, không phải thiếu — xem ghi chú trong `engine.py`) |
+| `domain/` | ✅ Đầy đủ — 10 Value Object · 14 enum · 8 Entity · **7 Domain Service** (⭐ `IssuePlaceNormalizer` **5 tầng** với `issue_place_shape.py`) · ⭐ **18 Port** (+ fake/null cho mỗi Port; đánh số 1–19 khuyết 13) · cây ngoại lệ · ⭐ **`validation/`**: `ValidationEngine` + registry 4 tập quy tắc + **23 quy tắc `V-OCR-*`** (3 tập còn lại đăng ký **rỗng**, không phải thiếu — xem ghi chú trong `engine.py`) |
 | `infrastructure/` | Một phần — **persistence** (19 bảng, **10 migration**, 7/8 repository + UnitOfWork; `Contract` repo **hoãn có chủ đích** vì phụ thuộc `RenderContextBuilder` chưa tồn tại) · **security** (DPAPI thật + AES-256-GCM + blind index) · **logging** (Loguru 3 sink + PII filter 2 lớp) · **system** · ⭐ **ocr đầy đủ 8/8 Port OCR**: `preprocessing` · `channels` (`ZxingQrDecoder`, `Td1MrzReader`) · `engines` (`PaddleOcrAdapter`) · `classification` (`HeuristicSideClassifier`, ⭐ `MarkerDocumentTypeSelector`) · `extraction` · `text_matching.py`. Chưa có: storage, documents, queue, **alias repository** |
-| `application/` | ⭐ Một phần — `dto/extraction.py` (`ExtractionResult` + bất biến của nó) · `pipelines/extraction_pipeline.py` (9 chặng S3→S11). Use Case vẫn rỗng |
-| `presentation/` | Một phần — middlewares (CORS, security headers, correlation-id, local token) · chưa có router/endpoint nào (64 endpoint là việc P3 module 7) |
-| `container.py` | ✅ Composition Root — ⚠️ **chưa nối `ExtractionPipeline`**: nó cần `IAliasRepository`, thứ chưa có hiện thực thật. Đó là module 2 của P3 |
+| `application/` | ⭐ Một phần — `dto/extraction.py` · `pipelines/extraction_pipeline.py` (9 chặng S3→S11) · ⭐ **`use_cases/ocr/process_ocr_session.py`** (2 transaction kẹp lượt OCR — ngoại lệ §12.14.1). Use Case khác vẫn rỗng |
+| `presentation/` | Một phần — middlewares (CORS, security headers, correlation-id, local token) · chưa có router/endpoint nào (⭐ 62 endpoint là việc P3 module 7) |
+| `container.py` | ✅ Composition Root — ⭐ **đã nối trọn chuỗi OCR**: 8 adapter P2 + `ExtractionPipeline` + `process_ocr_session_use_case()`. ⚠️ `warm_up()` cố ý không gọi ở đây |
 
 ⭐ Mốc demo M1 (roadmap §14.3) đã đạt: [`backend/scripts/demo_m1_customer.py`](backend/scripts/demo_m1_customer.py) tạo Customer giả qua Container thật, đọc lại giải mã đúng, xác nhận `id_number_enc` là nhị phân không đọc được — chạy thật trên PostgreSQL. Đã có bản build `.exe` trial đầu tiên ([`backend/build.spec`](backend/build.spec)) — khởi động và trả request thật; chưa đóng gói model OCR thật (chưa có adapter).
 
@@ -173,6 +175,18 @@ Mọi mục dưới đây đã đồng bộ ngược vào `docs/design/`, không
 - ⭐⭐ **`ExtractionPipeline` nhận DANH SÁCH `document_type`, không phải một cái** (P3 module 1, khác §12.3 bản gốc). Người dùng **không thể biết** thẻ mình cầm thuộc thế hệ nào, hai thế hệ lưu hành song song, và một phiên khai nhầm sẽ trích mọi trường qua sai `zone_map` — tức là sinh giá trị **sai đầy tự tin**, đúng thứ §7.9 chặn phát hành. Truyền một phần tử = hành vi cũ.
   - ⚠️ Bản đồ "mặt nào in trường nào" (dùng cho đòn bẩy bỏ lượt quét) phải lấy **hợp của mọi thế hệ ứng viên**, vì hai thế hệ in `expiry_date` ở hai mặt khác nhau. Dùng thế hệ đã khai báo sẽ khiến phiên khai nhầm bỏ đúng lượt quét lẽ ra nhận ra nó là thế hệ kia.
 - ⭐ **S9 chạy TRƯỚC S7 cho hai kênh chính xác.** Không phải để đẹp thứ tự: đòn bẩy "bỏ lượt quét" cần biết trường nào còn thiếu, mà muốn biết thì QR/MRZ phải chuẩn hoá xong trước.
+- ⭐⭐ **D2.1 — gỡ PDF thì phải gỡ luôn hai trạng thái trung gian.** `DOCX_READY` chỉ có nghĩa "đã có DOCX, chưa có PDF"; sau khi bỏ PDF, khoảng đó bằng không nên `GENERATING` đi thẳng `COMPLETED`, và `mark_docx_ready()` nhập vào `mark_completed(snapshot_sha256, now)`. Giữ lại `DOCX_READY` là giữ một trạng thái **không thao tác nào quan sát được**.
+  - ⭐ **Số Port 13 và mã lỗi `COCAS-7004`/`7005` để KHUYẾT, không đánh lại và không tái sử dụng.** Đánh lại số làm sai mọi trích dẫn `§12.1x` trong mã, tài liệu và lịch sử commit — rẻ hôm nay, sai từ ngày mai.
+  - ⚠️ **Migration `011` CHUYỂN dữ liệu chứ không xoá:** hợp đồng kẹt ở `DOCX_READY`/`PDF_CONVERTING`/`PDF_FAILED` đều nghĩa là `.docx` đã ghi xong ⇒ `COMPLETED`. Xoá chúng là huỷ chứng từ pháp lý để làm vừa một CHECK. Riêng job `PDF_CONVERT` đang xếp hàng thì xoá — chúng mô tả việc không còn tồn tại.
+  - ⚠️ **Seed migration `007` sửa tại chỗ (28→25 khoá), không để `011` xoá bù** — CSDL seed *sau* D2.1 không được sinh ra dòng mà `011` tồn tại để xoá.
+  - ⭐ **Con số dẫn xuất lạc hậu ngay:** "xoá ảnh giảm dung lượng 9 lần" thành **~20 lần**. Cắt phạm vi làm phần "không phải ảnh" nhỏ đi ⇒ tỉ lệ này **lớn lên**, ngược trực giác.
+- ⭐⭐ **Repository phục vụ singleton phải nhận session FACTORY, không nhận session** (P3 module 2). `SqlAlchemyAliasRepository`/`SqlAlchemyDocumentTypeRepository` phục vụ `IssuePlaceNormalizer` — Domain Service sống suốt vòng đời tiến trình bên trong pipeline. Gắn session vào sẽ hoặc ghim singleton vào một session mà Use Case sẽ đóng dưới chân nó, hoặc kéo lượt đọc 19 dòng dữ liệu tham chiếu vào transaction nghiệp vụ.
+  - ⚠️ **`find_by_alias` KHÔNG được là truy vấn riêng** — nó đọc chính cache của `list_active`. Hai đường SQL tới cùng một bảng là cách tầng 2 và tầng 3 bắt đầu bất đồng ý về việc *có những dòng nào*.
+  - ⚠️ **Dòng tầng 4 có `alias_normalized` NULL.** Tra chuỗi rỗng mà khớp NULL sẽ trả về một dòng từ khoá và gán giá trị chuẩn ở **độ tin cậy đầy đủ**.
+- ⭐⭐ **Infrastructure KHÔNG được import `ExtractionResult`** — nó là DTO tầng Application, mà `infrastructure` nằm **dưới** `application` trong hợp đồng import-linter. Vì thế có `OcrResultSnapshot`/`OcrFieldSnapshot` (từ vựng Domain) và **Use Case là bên dịch**. Không cần thêm Port: nó khớp `IWriteRepository[T]` (Port 9).
+- ⭐ **Use Case có công việc dài ở giữa được dùng HAI transaction** (ngoại lệ §12.14.1, đã ghi vào tài liệu). Một transaction bao trọn 9.5 s giữ nguyên một kết nối pool không dùng đến, và sự cố giữa chừng rollback cả `PROCESSING` → phiên về `QUEUED` trong khi log nói ngược lại. Giá phải trả: sự cố **giữa** hai transaction để lại phiên `PROCESSING` vĩnh viễn (việc của §12.15).
+- ⚠️ **`mrz_corrections_applied`: `NULL` ≠ `0`.** `NULL` = không có MRZ để đọc; `0` = đọc được, không phải sửa. Tỉ lệ sửa lỗi §7.5 chia cho vế thứ hai. Cùng loại: phiên `FAILED` **không có dòng `ocr_result`** — ghi dòng toàn NULL sẽ khiến "chạy không ra gì" giống hệt "thẻ trắng".
+- ⚠️ **AAD của `ocr_field` gắn vào `id` của chính dòng đó**, không gắn vào phiên hay tên trường — nếu không, ciphertext dời được giữa 6 dòng cùng kết quả và `dob` dán đè `id_number` vẫn giải mã sạch.
 - ⭐ **Chỉ 9/23 quy tắc `V-OCR-*` chặn cứng.** Thẻ hết hạn, tuổi bất thường, mã tỉnh lạ đều là 🟡 — chặn vì nghi ngờ là để người dùng không lập được hợp đồng cho khách đang ngồi trước mặt (P-08). Và trường **trống** chỉ do `V-OCR-017` báo: các quy tắc hình dạng (003/005/006/007/016) chỉ chạy khi trường **có giá trị nhưng sai dạng**, nếu không một ô hỏng sẽ nhận hai lỗi.
 
 ### Ràng buộc cần biết khi làm tiếp P2

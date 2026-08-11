@@ -1,7 +1,13 @@
 """seed_system_setting
 
-Seeds the default `system_setting` rows from §4.4.17's config table (28 keys
-— the doc's own count, "~30 khoá cấu hình mặc định", is an approximation).
+Seeds the default `system_setting` rows from §4.4.17's config table (⭐ 25
+keys after D2.1 dropped the three `document.pdf_converter` /
+`document.libreoffice_*` toggles — the doc's own count, "~30 khoá cấu hình
+mặc định", was always an approximation).
+
+⚠️ Edited in place rather than left at 28 and patched by migration 011: a
+database seeded **after** D2.1 must never gain rows that 011 exists to
+delete. 011 handles databases seeded before it.
 
 Idempotent: `ON CONFLICT (key) DO NOTHING` — an admin who already changed a
 setting must never have their value silently reset by a re-run.
@@ -85,12 +91,8 @@ _SEED_ROWS: list[tuple[str, object, str, dict | None, str, str, str, bool]] = [
      "Cảnh báo nếu không sao lưu quá X ngày", "Hiện cảnh báo trên Dashboard nếu chưa sao lưu trong khoảng thời gian này.", "BACKUP", False),
     ("backup.encrypt", True, "bool", None,
      "Mã hoá bản sao lưu", "Bắt buộc mã hoá file .cocasbak bằng mật khẩu backup.", "BACKUP", False),
-    ("document.pdf_converter", "libreoffice", "enum", {"options": ["libreoffice", "null"]},
-     "Bộ chuyển đổi PDF", "Công cụ dùng để chuyển DOCX sang PDF.", "DOCUMENT", True),
-    ("document.libreoffice_timeout_sec", 60, "int", {"min": 10, "max": 300},
-     "Thời gian chờ chuyển đổi PDF (giây)", "Quá thời gian này, tiến trình chuyển đổi bị huỷ.", "DOCUMENT", False),
-    ("document.libreoffice_idle_shutdown_min", 20, "int", {"min": 1, "max": 120},
-     "Tự tắt LibreOffice sau (phút)", "Số phút không hoạt động trước khi tắt listener LibreOffice để tiết kiệm RAM.", "DOCUMENT", False),
+    # ⭐ D2.1 — 3 khoá document.pdf_converter / document.libreoffice_* đã gỡ ở đây
+    # cùng khâu xuất PDF (§9.13). Migration 011 xoá chúng khỏi CSDL đã seed.
     ("export.strip_diacritics", False, "bool", None,
      "Bỏ dấu tên file xuất", "Nếu bật, tên file DOCX/PDF xuất ra sẽ bỏ dấu tiếng Việt.", "DOCUMENT", False),
     ("ui.date_format", "dd/MM/yyyy", "string", None,
@@ -101,7 +103,7 @@ _SEED_ROWS: list[tuple[str, object, str, dict | None, str, str, str, bool]] = [
 
 
 def upgrade() -> None:
-    assert len(_SEED_ROWS) == 28
+    assert len(_SEED_ROWS) == 25
     for key, value, value_type, constraints, label_vi, description, scope, requires_restart in _SEED_ROWS:
         op.execute(
             pg_insert(_system_setting)

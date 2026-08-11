@@ -2,7 +2,9 @@
 
 [← Mục lục](README.md)
 
-**FastAPI · 64 endpoint · OpenAPI 3.1 · Loopback only**
+**FastAPI · ⭐ 62 endpoint · OpenAPI 3.1 · Loopback only**
+
+> ⭐ **D2.1 — 64 → 62 endpoint.** Đã gỡ `POST /contracts/{id}/retry-pdf` và `GET /contracts/{id}/documents/pdf` cùng toàn bộ khâu xuất PDF (§9.13).
 
 ---
 
@@ -89,7 +91,7 @@ Danh sách có phân trang:
 | `COCAS-4xxx` | **OCR** | 409/422/500/503 | `4001` phiên không tồn tại · `4002` phiên chưa hoàn tất · `4003` không phân loại được mặt · `4004` tải trùng một mặt · `4005` hai ảnh không cùng một thẻ · `4006` chất lượng ảnh quá kém · `4007` engine OCR không sẵn sàng · `4008` phiên đã được sử dụng · `4009` hết số lần thử lại |
 | `COCAS-5xxx` | **Khách hàng** | 404/409/422 | `5001` không tìm thấy · `5002` CCCD đã tồn tại · `5004` không thể xoá (còn hợp đồng) · `5005` STK trùng trong cùng khách hàng · `5007` STK chứng khoán đã thuộc khách hàng khác |
 | `COCAS-6xxx` | **Template** | 400/404/422 | `6001` không tìm thấy · `6002` file không phải DOCX hợp lệ · `6003` cú pháp Jinja2 sai · `6004` chứa biến không xác định · `6005` không có phiên bản active · `6006` checksum file không khớp · `6007` file mẫu thiếu trên đĩa · `6008` biến cần in đậm viết dạng thường · `6009` biến không xác định · `6010` chứa placeholder ảnh · `6011` biến bắt buộc của party_schema không xuất hiện · `6012` `{% for %}` trên biến không phải mảng · `6014` **cấu trúc Jinja2 nguy hiểm** · `6015` file quá lớn · `6016` `party_schema` yêu cầu tính năng chưa hỗ trợ ở v1.0 |
-| `COCAS-7xxx` | **Hợp đồng** | 404/409/422/500 | `7001` không tìm thấy · `7002` thiếu biến bắt buộc · `7003` render DOCX thất bại · `7004` chuyển PDF thất bại · `7005` LibreOffice timeout · `7006` hợp đồng đã bị huỷ · `7007` không thể sửa hợp đồng đã hoàn tất · `7008` tài liệu chưa sẵn sàng · `7009` **checksum tài liệu không khớp** · `7010` số bên không khớp `party_schema` · `7011` `entity_type` không khớp khai báo · `7012` thiếu `bank_account_id` · `7013` một chủ thể đóng 2 vai · `7014` **xung đột phiên bản** |
+| `COCAS-7xxx` | **Hợp đồng** | 404/409/422/500 | `7001` không tìm thấy · `7002` thiếu biến bắt buộc · `7003` render DOCX thất bại · ~~`7004`~~ ~~`7005`~~ *(D2.1 — đã gỡ cùng khâu PDF, **không tái sử dụng số**)* · `7006` hợp đồng đã bị huỷ · `7007` không thể sửa hợp đồng đã hoàn tất · `7008` tài liệu chưa sẵn sàng · `7009` **checksum tài liệu không khớp** · `7010` số bên không khớp `party_schema` · `7011` `entity_type` không khớp khai báo · `7012` thiếu `bank_account_id` · `7013` một chủ thể đóng 2 vai · `7014` **xung đột phiên bản** |
 | `COCAS-8xxx` | **Hệ thống** | 500/503/507 | `8001` lỗi CSDL · `8002` lỗi hệ thống tệp · `8003` hết dung lượng đĩa · `8004` lỗi giải mã · `8005` dịch vụ chưa sẵn sàng · `8006` job thất bại · `8007` backup thất bại · `8008` phiên bản schema không tương thích · `8009` sai mật khẩu backup |
 | `COCAS-9xxx` | **Giao thức** | 400 | `9002` JSON sai cú pháp · `9003` tham số phân trang không hợp lệ · `9004` tham số `sort` ngoài danh sách trắng |
 
@@ -110,7 +112,7 @@ Danh sách có phân trang:
 | `415` | MIME không được phép |
 | `422` | Cú pháp đúng nhưng vi phạm quy tắc nghiệp vụ |
 | `500` | Lỗi không lường trước — **luôn kèm `correlation_id`** |
-| `503` | Engine OCR / LibreOffice chưa sẵn sàng |
+| `503` | Engine OCR chưa sẵn sàng |
 | `507` | Hết dung lượng đĩa |
 
 ### 5.1.7. Phân trang, lọc, sắp xếp
@@ -128,7 +130,7 @@ Danh sách có phân trang:
 
 ---
 
-## 5.2. Danh mục 64 endpoint
+## 5.2. Danh mục ⭐ 62 endpoint
 
 | # | Method | Đường dẫn | Mô tả |
 |---|---|---|---|
@@ -175,40 +177,38 @@ Danh sách có phân trang:
 | 35 | DELETE | `/api/v1/templates/{id}` | Vô hiệu hoá |
 | 36 | POST | `/api/v1/templates/{id}/preview` | Sinh bản xem thử với dữ liệu giả |
 | 37 | GET | `/api/v1/templates/variables` | Từ điển biến hệ thống |
-| **Hợp đồng (9)** ||||
+| **Hợp đồng (7)** ||||
 | 38 | POST | `/api/v1/contracts/generate` | Sinh hợp đồng |
 | 39 | GET | `/api/v1/contracts` | Danh sách + lọc |
 | 40 | GET | `/api/v1/contracts/{id}` | Chi tiết + `parties[]` |
 | 41 | POST | `/api/v1/contracts/{id}/regenerate` | Sinh lại (revision mới) |
-| 42 | POST | `/api/v1/contracts/{id}/retry-pdf` | Thử lại chuyển PDF |
-| 43 | POST | `/api/v1/contracts/{id}/void` | Huỷ hợp đồng |
-| 44 | GET | `/api/v1/contracts/{id}/documents` | Liệt kê tài liệu |
-| 45 | GET | `/api/v1/contracts/{id}/documents/docx` | Tải DOCX |
-| 46 | GET | `/api/v1/contracts/{id}/documents/pdf` | Tải/xem PDF |
+| 42 | POST | `/api/v1/contracts/{id}/void` | Huỷ hợp đồng |
+| 43 | GET | `/api/v1/contracts/{id}/documents` | Liệt kê tài liệu |
+| 44 | GET | `/api/v1/contracts/{id}/documents/docx` | Tải DOCX |
 | **Tham chiếu (5)** ||||
-| 47 | GET | `/api/v1/reference/banks` | Danh mục ngân hàng |
-| 48 | GET | `/api/v1/reference/provinces` | Danh mục tỉnh/thành |
-| 49 | GET | `/api/v1/reference/aliases` | Từ điển chuẩn hoá |
-| 50 | POST | `/api/v1/reference/aliases` | Thêm alias mới |
-| 51 | DELETE | `/api/v1/reference/aliases/{id}` | Xoá alias |
+| 45 | GET | `/api/v1/reference/banks` | Danh mục ngân hàng |
+| 46 | GET | `/api/v1/reference/provinces` | Danh mục tỉnh/thành |
+| 47 | GET | `/api/v1/reference/aliases` | Từ điển chuẩn hoá |
+| 48 | POST | `/api/v1/reference/aliases` | Thêm alias mới |
+| 49 | DELETE | `/api/v1/reference/aliases/{id}` | Xoá alias |
 | **Cấu hình (3)** ||||
-| 52 | GET | `/api/v1/settings` | Đọc cấu hình |
-| 53 | PUT | `/api/v1/settings/{key}` | Sửa một cấu hình |
-| 54 | POST | `/api/v1/settings/reset` | Khôi phục mặc định |
+| 50 | GET | `/api/v1/settings` | Đọc cấu hình |
+| 51 | PUT | `/api/v1/settings/{key}` | Sửa một cấu hình |
+| 52 | POST | `/api/v1/settings/reset` | Khôi phục mặc định |
 | **Nhật ký (2)** ||||
-| 55 | GET | `/api/v1/activity-logs` | Xem nhật ký hoạt động |
-| 56 | GET | `/api/v1/activity-logs/export` | ⭐ Xuất CSV / JSONL — **bản lề lưu trữ lạnh** |
+| 53 | GET | `/api/v1/activity-logs` | Xem nhật ký hoạt động |
+| 54 | GET | `/api/v1/activity-logs/export` | ⭐ Xuất CSV / JSONL — **bản lề lưu trữ lạnh** |
 | **Sao lưu (3)** ||||
-| 57 | POST | `/api/v1/backups` | Tạo bản sao lưu |
-| 58 | GET | `/api/v1/backups` | Danh sách bản sao lưu |
-| 59 | POST | `/api/v1/backups/restore` | Khôi phục (có xác minh trước) |
+| 55 | POST | `/api/v1/backups` | Tạo bản sao lưu |
+| 56 | GET | `/api/v1/backups` | Danh sách bản sao lưu |
+| 57 | POST | `/api/v1/backups/restore` | Khôi phục (có xác minh trước) |
 | **Công việc (3)** ||||
-| 60 | GET | `/api/v1/jobs` | Danh sách job |
-| 61 | GET | `/api/v1/jobs/{id}` | Chi tiết job |
-| 62 | POST | `/api/v1/jobs/{id}/cancel` | Huỷ job |
+| 58 | GET | `/api/v1/jobs` | Danh sách job |
+| 59 | GET | `/api/v1/jobs/{id}` | Chi tiết job |
+| 60 | POST | `/api/v1/jobs/{id}/cancel` | Huỷ job |
 | **Tổng quan (2)** ||||
-| 63 | GET | `/api/v1/dashboard/summary` | Số liệu tổng quan |
-| 64 | GET | `/api/v1/dashboard/ocr-accuracy` | ⭐ Báo cáo độ chính xác OCR thực tế |
+| 61 | GET | `/api/v1/dashboard/summary` | Số liệu tổng quan |
+| 62 | GET | `/api/v1/dashboard/ocr-accuracy` | ⭐ Báo cáo độ chính xác OCR thực tế |
 
 ---
 
@@ -610,8 +610,7 @@ Payload ~200 byte, gọi mỗi 800 ms:
       "party_extra": { "securities_account_no": "008C123456" }
     }
   ],
-  "extra_variables": {},
-  "generate_pdf": true
+  "extra_variables": {}
 }
 ```
 
@@ -623,7 +622,7 @@ Payload ~200 byte, gọi mỗi 800 ms:
   "export_name": "Mẫu 01A-GDKQ - NGUYỄN VĂN AN",
   "revision_no": 1,
   "party_count": 1,
-  "status": "DOCX_READY",
+  "status": "COMPLETED",
   "parties": [
     {
       "party_key": "holder", "party_index": 0,
@@ -645,12 +644,6 @@ Payload ~200 byte, gọi mỗi 800 ms:
       "ready": true, "size_bytes": 46521, "sha256": "a1b2c3...",
       "download_url": "/api/v1/contracts/0192f4e2-.../documents/docx",
       "generated_at": "2026-08-08T09:16:11.902Z"
-    },
-    "pdf": {
-      "ready": false, "status": "PDF_CONVERTING",
-      "job_id": "0192f4e2-4444-7000-b888-999900001111",
-      "poll_url": "/api/v1/jobs/0192f4e2-4444-7000-b888-999900001111",
-      "estimated_seconds": 5
     }
   },
   "version": 1,
@@ -678,15 +671,17 @@ Payload ~200 byte, gọi mỗi 800 ms:
 
 ---
 
-### 5.3.9. `GET /contracts/{id}/documents/pdf`
+### 5.3.9. `GET /contracts/{id}/documents/docx`
 
-**Query:** `?disposition=inline` (mặc định) hoặc `?disposition=attachment`.
+**Query:** `?disposition=attachment` (mặc định) hoặc `?disposition=inline`.
+
+> ⭐ **D2.1 — đây là endpoint tải tài liệu DUY NHẤT.** `GET .../documents/pdf` đã bị gỡ cùng khâu chuyển PDF.
 
 **Response `200`**
 ```
-Content-Type: application/pdf
-Content-Disposition: inline; filename*=UTF-8''M%E1%BA%ABu%2001A%20-%20NGUY%E1%BB%84N%20V%C4%82N%20A.pdf
-Content-Length: 187432
+Content-Type: application/vnd.openxmlformats-officedocument.wordprocessingml.document
+Content-Disposition: attachment; filename*=UTF-8''M%E1%BA%ABu%2001A%20-%20NGUY%E1%BB%84N%20V%C4%82N%20A.docx
+Content-Length: 46521
 X-Document-SHA256: 9f8e7d6c5b4a...
 Cache-Control: no-store, private
 X-Content-Type-Options: nosniff
@@ -707,7 +702,7 @@ X-Content-Type-Options: nosniff
 | 5 | Giải mã, stream về client |
 | 6 | Tăng `download_count`, ghi nhật ký `DOCUMENT_DOWNLOADED` |
 
-**Mã trạng thái:** `200` · `404` · `409 COCAS-7008` (PDF chưa sẵn sàng, kèm `status` + `poll_url`) · `500 COCAS-7009` · `500 COCAS-8002`.
+**Mã trạng thái:** `200` · `404` · `409 COCAS-7008` (tài liệu chưa sẵn sàng — hợp đồng còn ở `GENERATING`) · `500 COCAS-7009` · `500 COCAS-8002`.
 
 ---
 
@@ -797,7 +792,6 @@ X-Content-Type-Options: nosniff
   "checks": {
     "database":      { "status": "UP", "latency_ms": 3,  "detail": "PostgreSQL 16.2" },
     "ocr_engine":    { "status": "UP", "latency_ms": 0,  "detail": "PaddleOCR 2.9.0, models loaded" },
-    "pdf_converter": { "status": "IDLE", "detail": "LibreOffice 7.6.4, listener chưa khởi động (lazy)" },
     "file_vault":    { "status": "UP", "detail": "Writable, 47.2 GB free" },
     "job_runner":    { "status": "UP", "detail": "0 queued, 0 running" },
     "encryption":    { "status": "UP", "detail": "KEK loaded from DPAPI" }
@@ -829,10 +823,9 @@ X-Content-Type-Options: nosniff
 | `PUT /customers/{id}` | Toàn bộ đối tượng | Đối tượng đã cập nhật | `404` · `422` |
 | `DELETE /customers/{id}` | — | `204` | `409 COCAS-5004` còn hợp đồng |
 | `POST /contracts/{id}/regenerate` | `{reason, extra_variables?}` + `If-Match` | Hợp đồng mới `revision_no+1`, bản cũ → `SUPERSEDED` | `409 COCAS-7006/7014` |
-| `POST /contracts/{id}/retry-pdf` | — | `202` + job mới | `409` PDF đã sẵn sàng |
 | `POST /contracts/{id}/void` | `{reason}` (≥10 ký tự) + `If-Match` | `status=VOIDED` | `409 COCAS-7006/7014` |
 | `POST /templates/validate` | multipart `file` | Báo cáo biến + lỗi, **không lưu gì** | `422 COCAS-6003/6014` |
-| `POST /templates/{id}/preview` | — | `application/pdf` từ **dữ liệu giả** + watermark "BẢN XEM THỬ" | `422` |
+| `POST /templates/{id}/preview` | — | ⭐ `.docx` từ **dữ liệu giả** + watermark "BẢN XEM THỬ" | `422` |
 | `GET /templates/variables` | — | Từ điển biến: `key`, `label_vi`, `type`, `example`, `source`, `render_style` | — |
 | `GET /reference/banks` | `?q=` | NH + `account_min_len`/`max_len` | — |
 | `POST /reference/aliases` | `{field_key, alias, canonical_value, tier, keywords?}` | `201` | `409` alias đã tồn tại |
@@ -864,13 +857,11 @@ X-Content-Type-Options: nosniff
 | 11 | `GET /customers?id_number=…&exact=true` | `{items: []}` — không trùng |
 | 12 | `GET /reference/banks?q=ngoai thuong` | Gợi ý VCB *(chỉ với mẫu HĐ-GĐN)* |
 | 13 | `POST /customers` | `201` — `customer_id` + `bank_account_id` |
-| 14 | `POST /contracts/generate` | `201` — `DOCX_READY`, PDF đang chuyển |
-| 15 | `GET /jobs/{pdf_job_id}` × ~4 lần | `SUCCEEDED` |
-| 16 | `GET /contracts/{id}` | `COMPLETED`, cả 2 tài liệu sẵn sàng |
-| 17 | `GET /contracts/{id}/documents/pdf?disposition=inline` | Stream PDF xem trước |
-| 18 | *(nền)* job `RETENTION_PURGE` | Xoá 2 ảnh gốc, ghi nhật ký `IMAGE_PURGED` |
+| 14 | `POST /contracts/generate` | ⭐ `201` — `COMPLETED` ngay, `.docx` sẵn sàng |
+| 15 | `GET /contracts/{id}/documents/docx` | Stream `.docx` |
+| 16 | *(nền)* job `RETENTION_PURGE` | Xoá 2 ảnh gốc, ghi nhật ký `IMAGE_PURGED` |
 
-**Tổng:** ~30 lượt gọi (gồm polling) · ~45 giây, trong đó **~35 giây là thời gian nhập liệu của con người**.
+**Tổng:** ⭐ ~25 lượt gọi (gồm polling; D2.1 bỏ ~5 lượt polling job PDF) · ~40 giây, trong đó **~35 giây là thời gian nhập liệu của con người**.
 
 ---
 

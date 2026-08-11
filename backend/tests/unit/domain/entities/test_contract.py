@@ -45,30 +45,26 @@ class TestConstruction:
 
 class TestHappyPathTransitions:
     def test_full_lifecycle_to_completed(self) -> None:
+        """⭐ D2.1 — GENERATING goes straight to COMPLETED; no PDF stages."""
         contract = _make()
         contract.mark_generating(NOW)
         assert contract.status == ContractStatus.GENERATING
-        contract.mark_docx_ready(b"\x00" * 32, NOW)
-        assert contract.status == ContractStatus.DOCX_READY
-        contract.mark_pdf_converting(NOW)
-        assert contract.status == ContractStatus.PDF_CONVERTING
-        contract.mark_completed(NOW)
+        contract.mark_completed(b"\x00" * 32, NOW)
         assert contract.status == ContractStatus.COMPLETED
         assert contract.is_completed is True
 
-    def test_docx_ready_can_skip_straight_to_completed(self) -> None:
-        """PDF conversion can be skipped (P-08 degrade gracefully — DOCX-only)."""
+    def test_completed_records_the_docx_hash(self) -> None:
+        """The only way into COMPLETED carries the snapshot hash with it."""
         contract = _make()
         contract.mark_generating(NOW)
-        contract.mark_docx_ready(b"\x00" * 32, NOW)
-        contract.mark_completed(NOW)
-        assert contract.status == ContractStatus.COMPLETED
+        contract.mark_completed(b"\xab" * 32, NOW)
+        assert contract.snapshot_sha256 == b"\xab" * 32
 
     def test_version_increments_on_each_transition(self) -> None:
         contract = _make()
         contract.mark_generating(NOW)
         assert contract.version == 2
-        contract.mark_docx_ready(b"\x00" * 32, NOW)
+        contract.mark_completed(b"\x00" * 32, NOW)
         assert contract.version == 3
 
 
@@ -87,21 +83,12 @@ class TestFailurePaths:
         contract.retry_generation(NOW)
         assert contract.status == ContractStatus.GENERATING
 
-    def test_pdf_failed_records_error(self) -> None:
-        contract = _make()
-        contract.mark_generating(NOW)
-        contract.mark_docx_ready(b"\x00" * 32, NOW)
-        contract.mark_pdf_converting(NOW)
-        contract.mark_pdf_failed("PDF_CONVERSION_TIMEOUT", "timeout", NOW)
-        assert contract.status == ContractStatus.PDF_FAILED
-
     def test_completed_clears_prior_error(self) -> None:
         contract = _make()
         contract.mark_generating(NOW)
         contract.mark_generation_failed("RENDER_ERROR", "boom", NOW)
         contract.retry_generation(NOW)
-        contract.mark_docx_ready(b"\x00" * 32, NOW)
-        contract.mark_completed(NOW)
+        contract.mark_completed(b"\x00" * 32, NOW)
         assert contract.error_code is None
         assert contract.error_message is None
 
@@ -110,14 +97,13 @@ class TestInvalidTransitions:
     def test_draft_cannot_jump_to_completed(self) -> None:
         contract = _make()
         with pytest.raises(BusinessRuleViolation) as exc_info:
-            contract.mark_completed(NOW)
+            contract.mark_completed(b"\x00" * 32, NOW)
         assert exc_info.value.code == "INVALID_CONTRACT_TRANSITION"
 
     def test_completed_cannot_transition_further(self) -> None:
         contract = _make()
         contract.mark_generating(NOW)
-        contract.mark_docx_ready(b"\x00" * 32, NOW)
-        contract.mark_completed(NOW)
+        contract.mark_completed(b"\x00" * 32, NOW)
         with pytest.raises(BusinessRuleViolation):
             contract.mark_generating(NOW)
 
@@ -132,8 +118,7 @@ class TestVoid:
     def test_void_from_completed(self) -> None:
         contract = _make()
         contract.mark_generating(NOW)
-        contract.mark_docx_ready(b"\x00" * 32, NOW)
-        contract.mark_completed(NOW)
+        contract.mark_completed(b"\x00" * 32, NOW)
         contract.void("Phát hiện sai thông tin khách hàng", "phthang", NOW)
         assert contract.status == ContractStatus.VOIDED
 
@@ -155,8 +140,7 @@ class TestSupersede:
     def test_supersede_completed(self) -> None:
         contract = _make()
         contract.mark_generating(NOW)
-        contract.mark_docx_ready(b"\x00" * 32, NOW)
-        contract.mark_completed(NOW)
+        contract.mark_completed(b"\x00" * 32, NOW)
         contract.supersede(NOW)
         assert contract.status == ContractStatus.SUPERSEDED
 
@@ -174,8 +158,7 @@ class TestLockedForBusinessEdits:
     def test_completed_is_locked(self) -> None:
         contract = _make()
         contract.mark_generating(NOW)
-        contract.mark_docx_ready(b"\x00" * 32, NOW)
-        contract.mark_completed(NOW)
+        contract.mark_completed(b"\x00" * 32, NOW)
         assert contract.is_locked_for_business_edits is True
 
     def test_voided_is_locked(self) -> None:

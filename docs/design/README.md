@@ -6,7 +6,7 @@ Hệ thống Desktop tự động tạo hợp đồng từ ảnh CCCD, chạy ho
 | | |
 |---|---|
 | **Mã dự án** | COCAS |
-| **Phiên bản tài liệu** | **D2.0** (đã hợp nhất D1.1 → D1.6 + kết quả Architecture Review) |
+| **Phiên bản tài liệu** | **D2.1** (đã hợp nhất D1.1 → D1.6 + Architecture Review + ⭐ gỡ PDF/LibreOffice) |
 | **Trạng thái** | ✅ Đóng băng — đây là tài liệu thiết kế gốc |
 | **Ngày** | 08/08/2026 |
 
@@ -28,7 +28,7 @@ Hệ thống Desktop tự động tạo hợp đồng từ ảnh CCCD, chạy ho
 | 06 | [Thiết kế giao diện](06-giao-dien.md) | Design system · **8 wireframe** · Component · Phím tắt · Kiến trúc FE |
 | 07 | [Module OCR](07-module-ocr.md) | Pipeline 3 kênh QR/MRZ/OCR · Tiền xử lý · Fusion · Đo lường |
 | 08 | [Module Validation](08-validation.md) | 4 tầng · 10 bảng Regex · 56 quy tắc · Thông điệp lỗi |
-| 09 | [Template Engine & Sinh tài liệu](09-template-va-tai-lieu.md) | Quét biến · Phiên bản · Context Builder · DOCX · PDF · Đặt tên file |
+| 09 | [Template Engine & Sinh tài liệu](09-template-va-tai-lieu.md) | Quét biến · Phiên bản · Context Builder · DOCX · Đặt tên file |
 | 10 | [Bảo mật & Logging](10-bao-mat-va-logging.md) | Mô hình đe doạ · 4 biện pháp · Loguru · Che PII · Nhật ký hoạt động |
 | 11 | [Cấu trúc & Thư viện](11-cau-truc-va-thu-vien.md) | Cây thư mục · 39 thư viện Python · Chính sách phiên bản |
 | 12 | [Đặc tả hợp đồng module](12-dac-ta-module.md) | 13 module: trách nhiệm · tiền/hậu điều kiện · bất biến |
@@ -43,7 +43,7 @@ Hệ thống Desktop tự động tạo hợp đồng từ ảnh CCCD, chạy ho
 
 ```
 Ảnh CCCD (trước + sau)  →  OCR offline  →  Trích xuất  →  Validation
-    →  Form bổ sung  →  Sinh hợp đồng DOCX  →  Xuất PDF  →  Lưu CSDL
+    →  Form bổ sung  →  Sinh hợp đồng DOCX  →  Lưu CSDL
 ```
 
 Toàn bộ chạy **trên một máy tính Windows**, **không có Internet**, **không gửi dữ liệu ra ngoài**.
@@ -56,7 +56,7 @@ Toàn bộ chạy **trên một máy tính Windows**, **không có Internet**, *
 | ✅ CCCD gắn chip 12 số | ❌ CMND 9 số, GPLX, Hộ chiếu, GPKD |
 | ✅ 2 mẫu hợp đồng: `01A/HĐ-GĐN`, `01A/GDKQ` | ❌ Mẫu cho tổ chức |
 | ✅ 1 bên tham gia (cá nhân) | ❌ Nhiều bên (đã chừa bản lề) |
-| ✅ Sinh DOCX + PDF | ❌ Nhúng ảnh vào hợp đồng |
+| ✅ Sinh DOCX | ❌ ⭐ Xuất PDF *(D2.1 — §9.13)* |
 | ✅ Sao lưu / khôi phục | ❌ Đăng nhập, mật khẩu, phân quyền |
 
 ---
@@ -69,12 +69,12 @@ Mọi dòng code phải tuân thủ. Vi phạm = phải sửa, không phải tra
 |---|---|
 | **P-01** | **Offline-First / Air-Gap by Design** — không chỉ "không gọi Internet" mà **không có khả năng** gọi |
 | **P-02** | **Dependency Rule** — Presentation → Application → Domain. Domain không import gì bên ngoài |
-| **P-03** | **Replaceable Engines** — OCR/Storage/Render/PDF/Queue đều là Port, đổi adapter không đổi gì khác |
+| **P-03** | **Replaceable Engines** — OCR/Storage/Render/Queue đều là Port, đổi adapter không đổi gì khác |
 | **P-04** | **Extraction ≠ OCR** — trích xuất là hợp nhất 3 kênh QR/MRZ/OCR, không phải chỉ OCR |
 | **P-05** | **Data Minimization** — xoá ảnh gốc sau khi sinh hợp đồng thành công |
 | **P-06** | **Template-Driven, Zero-Code Extension** — thêm mẫu = upload `.docx` + khai báo, không sửa code |
 | **P-07** | **Everything is Logged** — mọi thao tác chạm PII hoặc sinh tài liệu đều ghi nhật ký |
-| **P-08** | **Fail Loud, Degrade Gracefully** — OCR chết vẫn nhập tay được; PDF chết vẫn có DOCX |
+| **P-08** | **Fail Loud, Degrade Gracefully** — OCR chết vẫn nhập tay được |
 | **P-09** | **Deterministic & Reproducible** — snapshot bất biến, in lại sau 5 năm giống bản gốc |
 | **P-10** | **Radical Simplicity** — không xây cho quy mô không tồn tại |
 | **P-11** | **Windows là lớp xác thực** — ứng dụng không dựng lại lớp đó |
@@ -105,7 +105,7 @@ Mọi dòng code phải tuân thủ. Vi phạm = phải sửa, không phải tra
 | Backend | **Python 3.11+** + FastAPI + Pydantic v2 + Uvicorn (1 worker) |
 | OCR | **PaddleOCR** PP-OCRv4 (CPU, offline) + OpenCV + zxing-cpp |
 | CSDL | **PostgreSQL 16** portable (127.0.0.1:55432) + SQLAlchemy 2.0 + Alembic |
-| Tài liệu | **docxtpl** (Jinja2 sandboxed) + **LibreOffice** headless CLI |
+| Tài liệu | **docxtpl** (Jinja2 sandboxed) — ⭐ chỉ `.docx` |
 | Logging | **Loguru** (JSON có cấu trúc, che PII bắt buộc) |
 | Mã hoá | **cryptography** (AES-256-GCM) + Windows DPAPI |
 | Đóng gói | PyInstaller (onedir) + NSIS |
@@ -122,7 +122,6 @@ Mọi dòng code phải tuân thủ. Vi phạm = phải sửa, không phải tra
 | ⭐ **False Confidence** (conf ≥ 0.95 nhưng sai) | **≤ 0.5%** — chỉ số chặn phát hành |
 | Thời gian OCR 1 cặp ảnh (p95) | ≤ 9 giây |
 | Sinh DOCX (p95) | ≤ 800 ms |
-| Chuyển PDF (p95, listener ấm) | ≤ 5 giây |
 | Khởi động ứng dụng | p50 ≤ 10s · p95 ≤ 15s |
 | RAM lúc nghỉ / đỉnh | ~460 MB / ~850 MB |
 | Coverage Domain / Application | ≥ 95% / ≥ 85% |
@@ -155,13 +154,14 @@ Mọi dòng code phải tuân thủ. Vi phạm = phải sửa, không phải tra
 | D1.4 | Khai báo chính thức 2 mẫu hợp đồng thật · biến `securities_account_no` · không nhúng ảnh |
 | D1.5 | STK chứng khoán in đậm · tách số HĐ nội bộ ⟷ tên file xuất · ngày HĐ và chữ ký để trống |
 | D1.6 | **Bỏ toàn bộ xác thực** — không mật khẩu, không JWT, không phân quyền |
-| **D2.0** | **Architecture Review** — sửa 7 lỗi, 6 cải thiện, cắt 5 mục, cắt một phần 3 mục |
+| D2.0 | **Architecture Review** — sửa 7 lỗi, 6 cải thiện, cắt 5 mục, cắt một phần 3 mục |
+| **D2.1** | ⭐ **Gỡ toàn bộ khâu xuất PDF và LibreOffice** — đầu ra duy nhất là `.docx`. Đảo ngược ADR-05. Kéo theo: 19→18 Port · 64→62 endpoint · ContractStatus 9→6 · JobType 6→5 · DocType 2→1 · 28→25 khoá cấu hình · đóng rủi ro font tiếng Việt. Lý do đầy đủ: [§9.13](09-template-va-tai-lieu.md) |
 
 ### Tóm tắt kết quả D2.0
 
 **7 lỗi đã sửa:** hàng đợi hai nguồn chân lý · regex tên tiếng Việt sai · giả định sai về PaddleOCR charset · tầng Application tạo đối tượng docxtpl · mâu thuẫn `contract_date` · endpoint chết · ví dụ API lỗi thời.
 
-**6 cải thiện:** tách `IReadRepository`/`IWriteRepository` · LibreOffice khởi động lười · biến thể ảnh tạo lười · QR thử 3 lần · nới NFR khởi động · nói đúng mức về Local Token.
+**6 cải thiện:** tách `IReadRepository`/`IWriteRepository` · ~~LibreOffice khởi động lười~~ *(D2.1 gỡ)* · biến thể ảnh tạo lười · QR thử 3 lần · nới NFR khởi động · nói đúng mức về Local Token.
 
 **Đã cắt:** bộ sinh mã Zod/Pydantic · bảng `idempotency_record` · bảng `perf_metric` · 14 endpoint · 3 wireframe · bảng `organization`.
 

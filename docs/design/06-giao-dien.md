@@ -183,8 +183,8 @@ Với 2 mẫu hiện tại (`party_schema` 1 bên, `contract_fields` rỗng) →
 │  │ 01A-KQ-…00042   NGUYỄN VĂN AN         │ │ ⚠️ Chưa sao lưu 9 ngày       │ │
 │  │ 09:16  Mẫu 01A/GDKQ        🟢 Hoàn tất│ │    [Sao lưu ngay]            │ │
 │  │ ───────────────────────────────────── │ │                              │ │
-│  │ 01A-GDN-…00041  TRẦN THỊ BÌNH         │ │ 🟡 2 hợp đồng chờ tạo PDF    │ │
-│  │ 09:02  Mẫu 01A/HĐ-GĐN      🟡 Đang PDF│ │    [Xem]                     │ │
+│  │ 01A-GDN-…00041  TRẦN THỊ BÌNH         │ │ 🔴 1 hợp đồng tạo lỗi        │ │
+│  │ 09:02  Mẫu 01A/HĐ-GĐN      🟢 Hoàn tất│ │    [Xem]                     │ │
 │  │ ───────────────────────────────────── │ │                              │ │
 │  │ 01A-GDN-…00040  LÊ VĂN CƯỜNG          │ │ 💾 Còn 47.2 GB trống         │ │
 │  │ 08:47  Mẫu 01A/HĐ-GĐN      🟢 Hoàn tất│ │    (đủ cho ~15.000 HĐ)       │ │
@@ -244,7 +244,7 @@ Với 2 mẫu hiện tại (`party_schema` 1 bên, `contract_fields` rỗng) →
 
 > ⭐ **Khối "Mẫu đã chọn cần chuẩn bị" là giá trị lớn nhất của việc đưa bước chọn mẫu lên đầu.** Người dùng biết trước phải chuẩn bị gì — không còn cảnh quét xong CCCD rồi mới phát hiện còn thiếu thứ khác.
 
-**Hành vi nền khi chọn mẫu:** khởi động LibreOffice listener (để lúc sinh PDF đã ấm sẵn).
+**Hành vi nền khi chọn mẫu:** ⭐ *(D2.1 — không còn: việc này tồn tại chỉ để làm ấm LibreOffice)*.
 
 ---
 
@@ -421,8 +421,8 @@ Với 2 mẫu hiện tại (`party_schema` 1 bên, `contract_fields` rỗng) →
 ├─────────────────────────────────┬────────────────────────────────────────────┤
 │  ┌───────────────────────────┐  │  ✅ TẠO HỢP ĐỒNG THÀNH CÔNG                │
 │  │                           │  │                                            │
-│  │   [Xem trước PDF          │  │  Số hợp đồng   01A-GDN-202608-00042        │
-│  │    trang 1/4]             │  │  Tên file      Mẫu 01A - NGUYỄN VĂN AN     │
+│  │   Không xem trước         │  │  Số hợp đồng   01A-GDN-202608-00042        │
+│  │   trong ứng dụng          │  │  Tên file      Mẫu 01A - NGUYỄN VĂN AN     │
 │  │                           │  │  Khách hàng    NGUYỄN VĂN AN               │
 │  │                           │  │  CCCD          001199012345                │
 │  │                           │  │  Mẫu           Mẫu số 01A/HĐ-GĐN (v1)      │
@@ -431,8 +431,8 @@ Với 2 mẫu hiện tại (`party_schema` 1 bên, `contract_fields` rỗng) →
 │  │                           │  │  📎 TÀI LIỆU                               │
 │  │                           │  │  ┌──────────────────────────────────────┐  │
 │  │                           │  │  │ 📄 DOCX   45 KB      ✅  [⬇ Tải]    │  │
-│  └───────────────────────────┘  │  │ 📕 PDF   183 KB·4tr  ✅  [⬇][🖨]    │  │
-│  ◀ 1 / 4 ▶     🔍− ──●── 🔍+   │  └──────────────────────────────────────┘  │
+│  └───────────────────────────┘  │  └────────────────────────────────────────┘│
+│   [📝 Mở bằng Word]             │                                            │
 │                                 │                                            │
 │                                 │  ┌──────────────────────────────────────┐  │
 │                                 │  │      ➕ TẠO HỢP ĐỒNG TIẾP THEO       │  │
@@ -444,12 +444,9 @@ Với 2 mẫu hiện tại (`party_schema` 1 bên, `contract_fields` rỗng) →
 └─────────────────────────────────┴────────────────────────────────────────────┘
 ```
 
-**Trạng thái PDF đang xử lý** (DOCX đã sẵn sàng):
-```
-│  │ 📄 DOCX   45 KB    ✅  [⬇ Tải xuống]                       │
-│  │ 📕 PDF    ⟳ Đang tạo... (≈3 giây)   ████████░░  70%        │
-│  ↑ Người dùng tải DOCX và làm tiếp ngay, không phải chờ                    │
-```
+> ⭐ **D2.1 — không còn trạng thái "đang tạo PDF".** Màn hình này chỉ hiện ra khi `.docx` đã ghi xong và hợp đồng đã `COMPLETED`; không có ô tài liệu nào ở trạng thái chờ.
+>
+> ⭐ **Cũng không còn khung xem trước.** WebView2 xem được PDF nhưng không xem được `.docx`, nên khung trái chỉ hiện tên tài liệu + nút mở bằng Word. Đây là cái giá đã biết của quyết định §9.13 — và người dùng vẫn phải mở Word để ký/sửa, nên họ mở nó dù sao.
 
 ---
 
@@ -479,18 +476,18 @@ Dùng chung bố cục cho **Khách hàng** và **Hợp đồng**.
 | Tìm kiếm | Tên, CCCD, SĐT, Email, STK CK | Số HĐ, tên KH, tên file |
 | Bộ lọc | Trạng thái thẻ · Khoảng ngày | Trạng thái · Mẫu HĐ · Khoảng ngày |
 | Cột | Họ tên · Số CCCD · Ngày sinh · SĐT · Số HĐ · Ngày tạo | Số HĐ · Khách hàng · Mẫu · Trạng thái · Tài liệu |
-| Dòng phụ | ⚠️ "CCCD hết hạn trong 45 ngày" | Lý do huỷ · liên kết bản thay thế · lỗi PDF + nút [🔄] |
+| Dòng phụ | ⚠️ "CCCD hết hạn trong 45 ngày" | Lý do huỷ · liên kết bản thay thế · lỗi sinh tài liệu + nút [🔄] |
 | Bấm dòng | Chi tiết khách hàng | Chi tiết hợp đồng |
 | Sắp xếp mặc định | `-created_at` | `-created_at` |
 
 **Ví dụ dòng phụ ở màn hình Hợp đồng:**
 ```
-│  01A-GDN-…00039  │ LÊ VĂN CƯỜNG   │ 01A/HĐ-GĐN v1 │ ⚪ Bị thay │ 📄 📕    │
+│  01A-GDN-…00039  │ LÊ VĂN CƯỜNG   │ 01A/HĐ-GĐN v1 │ ⚪ Bị thay │ 📄       │
 │    └─ Đã thay bằng 01A-GDN-202608-00040 (revision 2)                         │
-│  01A-GDN-…00038  │ HOÀNG VĂN EM   │ 01A/HĐ-GĐN v1 │ 🔴 Đã huỷ  │ 📄 📕    │
+│  01A-GDN-…00038  │ HOÀNG VĂN EM   │ 01A/HĐ-GĐN v1 │ 🔴 Đã huỷ  │ 📄       │
 │    └─ Lý do: Khách hàng thay đổi thông tin tài khoản                         │
-│  01A-KQ-…00037   │ VŨ THỊ PHƯƠNG  │ 01A/GDKQ v1   │ 🟠 Lỗi PDF │ 📄 [🔄]  │
-│    └─ LibreOffice hết thời gian chờ  [Thử lại tạo PDF]                       │
+│  01A-KQ-…00037   │ VŨ THỊ PHƯƠNG  │ 01A/GDKQ v1   │ 🔴 Lỗi tạo │ — [🔄]   │
+│    └─ Lỗi khi render mẫu (COCAS-7003)  [Sinh lại]                            │
 ```
 
 ---
@@ -503,14 +500,14 @@ Dùng chung bố cục cho **Khách hàng** và **Hợp đồng**.
 ├─────────────────────────────────┬────────────────────────────────────────────┤
 │  ┌───────────────────────────┐  │  📋 THÔNG TIN CHUNG                        │
 │  │                           │  │  Tên file      Mẫu 01A - NGUYỄN VĂN AN     │
-│  │   [Xem trước PDF]         │  │  Mẫu           Mẫu số 01A/HĐ-GĐN           │
+│  │   Không xem trước         │  │  Mẫu           Mẫu số 01A/HĐ-GĐN           │
 │  │                           │  │  Phiên bản mẫu v1 (SHA a1b2c3…)            │
 │  │                           │  │  Ngày HĐ       08/08/2026                  │
 │  │                           │  │  Tạo bởi       nvnghiep                    │
 │  │                           │  │  Tạo lúc       08/08/2026 09:16:11         │
 │  │                           │  │  Bản sửa       1                           │
 │  └───────────────────────────┘  │                                            │
-│  ◀ 1 / 4 ▶     🔍− ──●── 🔍+   │  👥 CÁC BÊN THAM GIA (1)                   │
+│   [📝 Mở bằng Word]             │  👥 CÁC BÊN THAM GIA (1)                   │
 │                                 │  ┌──────────────────────────────────────┐  │
 │                                 │  │ 👤 Khách hàng (chính)                │  │
 │                                 │  │ NGUYỄN VĂN AN · 001199012345         │  │
@@ -520,12 +517,10 @@ Dùng chung bố cục cho **Khách hàng** và **Hợp đồng**.
 │                                 │                                            │
 │                                 │  📎 TÀI LIỆU                               │
 │                                 │  📄 DOCX  45 KB · 3 lượt tải   [⬇]        │
-│                                 │  📕 PDF  183 KB · 4 trang      [⬇][🖨]    │
 │                                 │                                            │
 │                                 │  📜 LỊCH SỬ                                │
 │                                 │  09:16:11  Tạo hợp đồng                    │
 │                                 │  09:16:12  Sinh DOCX (712 ms)              │
-│                                 │  09:16:15  Chuyển PDF (2.8 s)              │
 │                                 │  09:16:18  Xoá ảnh CCCD gốc                │
 ├─────────────────────────────────┴────────────────────────────────────────────┤
 │  Thao tác ▾:  [🔄 Sinh lại]  [🚫 Huỷ hợp đồng]  [📂 Mở thư mục]             │
@@ -628,7 +623,6 @@ Dùng chung bố cục cho **Khách hàng** và **Hợp đồng**.
 │  TRẠNG THÁI PHỤ THUỘC                        [🔄 Kiểm tra lại]               │
 │  🟢 Cơ sở dữ liệu        PostgreSQL 16.2 · 3 ms                              │
 │  🟢 Engine OCR           PaddleOCR 2.9.0 · model đã nạp · 148 MB RAM         │
-│  ⚪ Chuyển đổi PDF       LibreOffice 7.6.4 · chưa khởi động (lazy)           │
 │  🟢 Kho tệp              Ghi được · còn 47.2 GB                              │
 │  🟢 Mã hoá               Khoá đã nạp từ Windows DPAPI                        │
 │                                                                              │
@@ -689,7 +683,7 @@ Dùng chung bố cục cho **Khách hàng** và **Hợp đồng**.
 | `Ctrl+S` | Lưu nháp thủ công | Wizard |
 | `F2` | Sửa trường đang chọn | W3 |
 | ⭐ `Ctrl+↑ / ↓` | Chuyển giữa các trường CCCD (ảnh tự highlight) | W3 |
-| `Ctrl+P` | In PDF | W4, W6 |
+| `Ctrl+P` | ⭐ Mở tài liệu bằng ứng dụng mặc định *(D2.1: không còn in trực tiếp trong app)* | W4, W6 |
 | `F5` | Tải lại dữ liệu | Danh sách |
 | `?` | Bảng phím tắt | Toàn cục |
 
@@ -740,7 +734,7 @@ frontend/src/
 | **Form** | React Hook Form + Zod resolver | Hiệu năng tốt (uncontrolled), validate đồng bộ với backend |
 | **Định tuyến** | React Router v6 | Chuẩn |
 | **Bảng** | MUI DataGrid (community) | Đủ dùng, không cần bản trả phí |
-| **Xem PDF** | ⭐ `<embed>` của WebView2 | Không nhúng pdf.js — WebView2 đã có trình xem PDF, tiết kiệm 1.5 MB bundle |
+| **Xem tài liệu** | ⭐ *(không có)* | D2.1: đầu ra là `.docx`, WebView2 không hiển thị được. Không nhúng bất kỳ bộ xem nào — mở bằng ứng dụng mặc định của Windows |
 | **Biểu đồ** | Recharts | Nhẹ, đủ cho Dashboard |
 | **i18n** | Chuỗi tiếng Việt tập trung một chỗ | Chuẩn bị đa ngôn ngữ sau, chưa cần thư viện đầy đủ |
 

@@ -10,14 +10,13 @@
 graph TB
     subgraph BOUNDARY["🔒 MỘT MÁY TÍNH WINDOWS — KHÔNG MẠNG, KHÔNG INTERNET"]
         SYS["<b>COCAS</b><br/>Hệ thống sinh hợp đồng từ ảnh CCCD<br/><i>Ứng dụng Desktop đơn máy</i>"]
-        FS[("Ổ đĩa cục bộ<br/>File Vault — mã hoá<br/>ảnh · docx · pdf · template")]
+        FS[("Ổ đĩa cục bộ<br/>File Vault — mã hoá<br/>ảnh · docx · template")]
         DB[("PostgreSQL portable<br/>127.0.0.1:55432")]
-        LO["LibreOffice<br/>headless (khởi động lười)"]
         PP["PaddleOCR<br/>model offline"]
         BK[("Thư mục sao lưu<br/>*.cocasbak")]
     end
 
-    OP["👤 <b>Nhân viên nghiệp vụ</b><br/>Làm trọn quy trình: chọn mẫu → ảnh → OCR<br/>→ bổ sung → hợp đồng → PDF<br/><b>Không cần đăng nhập, không cần ai duyệt</b>"]
+    OP["👤 <b>Nhân viên nghiệp vụ</b><br/>Làm trọn quy trình: chọn mẫu → ảnh → OCR<br/>→ bổ sung → hợp đồng .docx<br/><b>Không cần đăng nhập, không cần ai duyệt</b>"]
 
     OP ==>|"Toàn bộ nghiệp vụ"| SYS
 
@@ -65,10 +64,6 @@ graph TB
         PG[("PostgreSQL 16<br/>127.0.0.1:55432<br/>pgdata trong %LOCALAPPDATA%")]
     end
 
-    subgraph PROC4["📄 Tiến trình 4 — soffice.bin (khởi động LƯỜI)"]
-        LO["LibreOffice headless listener<br/>bật khi vào bước 2 wizard<br/>tắt sau 20 phút không dùng"]
-    end
-
     subgraph DISK["💾 Ổ đĩa cục bộ"]
         VAULT[("File Vault · AES-256-GCM<br/>images / contracts / thumbnails")]
         TPL[("Template Store<br/>*.docx có phiên bản")]
@@ -99,12 +94,10 @@ graph TB
     INFRA --> LOGS
     INFRA --> BKP
     OCRMEM --> MODEL
-    INFRA -->|"--convert-to pdf"| LO
 
     style PROC1 fill:#e3f2fd,stroke:#1565c0,stroke-width:2px
     style PROC2 fill:#f3e5f5,stroke:#6a1b9a,stroke-width:2px
     style PROC3 fill:#e0f2f1,stroke:#00695c,stroke-width:2px
-    style PROC4 fill:#fff3e0,stroke:#e65100,stroke-width:2px
     style DISK fill:#fafafa,stroke:#616161
     style DOM fill:#c8e6c9,stroke:#2e7d32,stroke-width:3px
 ```
@@ -142,7 +135,7 @@ graph LR
         ENT["Entities<br/>Customer · Contract · ContractParty<br/>OcrSession · Template"]
         VOS["Value Objects<br/>CitizenId · Phone · IssuePlace<br/>SecuritiesAccountNumber · StyledValue"]
         DSV["Domain Services<br/>IssuePlaceNormalizer<br/>FieldFusionService<br/>CardValidityPolicy<br/>ExportNameGenerator"]
-        PORT["<b>PORTS (18)</b><br/>IOcrEngine · IRegionRecognizer<br/>IQrDecoder · IMrzReader · IPreprocessor<br/>IReadRepository · IWriteRepository<br/>IFileStorage · IDocumentRenderer<br/>IPdfConverter · IJobQueue · IClock · ICrypto"]
+        PORT["<b>PORTS (18)</b><br/>IOcrEngine · IRegionRecognizer<br/>IQrDecoder · IMrzReader · IPreprocessor<br/>IDocumentTypeSelector<br/>IReadRepository · IWriteRepository<br/>IFileStorage · IDocumentRenderer<br/>IJobQueue · IClock · ICrypto"]
         RULE["Validation Rules (56)"]
     end
 
@@ -159,7 +152,6 @@ graph LR
         STOR["EncryptedFileVault"]
         DCA["DocxContextAdapter<br/>StyledValue → RichText"]
         REND["DocxTemplateRenderer"]
-        PDF["LibreOfficePdfConverter"]
         SEC["DpapiCryptoService · BlindIndex"]
         QUE["JobRunner (polling bảng job)"]
     end
@@ -182,7 +174,7 @@ graph LR
     RCB --> VOS
 
     PRE & CLS & QR & MRZ & PADDLE & EXT -.->|implements| PORT
-    REPO & STOR & REND & PDF & SEC & QUE -.->|implements| PORT
+    REPO & STOR & REND & SEC & QUE -.->|implements| PORT
     RCB -.-> DCA --> REND
 
     style DOMN fill:#c8e6c9,stroke:#2e7d32,stroke-width:3px
@@ -208,7 +200,6 @@ sequenceDiagram
     participant DB as PostgreSQL
     participant V as File Vault
     participant DOC as Doc Engine
-    participant LO as LibreOffice
 
     rect rgb(255, 249, 196)
     note over U,API: BƯỚC 1 — CHỌN MẪU (điều khiển toàn bộ wizard)
@@ -217,7 +208,6 @@ sequenceDiagram
     UI->>API: GET /templates/{id}/requirements
     API-->>UI: party_schema · contract_fields · estimated_steps
     UI->>U: Hiện "Mẫu đã chọn cần chuẩn bị"
-    UI->>LO: (nền) khởi động listener LibreOffice
     end
 
     rect rgb(232, 245, 233)
@@ -298,20 +288,13 @@ sequenceDiagram
     UC->>DB: INSERT contract (GENERATING, render_snapshot_enc)
     UC->>DOC: DocxContextAdapter (StyledValue→RichText) → render
     DOC->>V: Ghi .tmp → verify SHA-256 → rename .docx
-    UC->>DB: UPDATE status=DOCX_READY
-    UC->>J: INSERT job (type=PDF_CONVERT)
-    API-->>UI: 201 {contract_id, docx ready, pdf pending}
-
-    W->>LO: soffice --headless --convert-to pdf
-    LO-->>W: contract.pdf
-    W->>W: Kiểm %PDF- · đếm trang
-    W->>V: Ghi file · SHA-256
-    W->>DB: UPDATE status=COMPLETED
+    UC->>DB: UPDATE status=COMPLETED
+    API-->>UI: 201 {contract_id, docx ready}
     end
 
-    UI->>API: GET /contracts/{id}/documents/pdf?disposition=inline
+    UI->>API: GET /contracts/{id}/documents/docx
     API->>V: Đọc file · kiểm SHA-256 · giải mã · stream
-    UI->>U: Xem trước + Tải "Mẫu 01A - NGUYỄN VĂN A.pdf" + In
+    UI->>U: Tải "Mẫu 01A - NGUYỄN VĂN A.docx"
 
     rect rgb(255, 235, 238)
     note over UC,V: DỌN DẸP THEO CHÍNH SÁCH
@@ -408,28 +391,27 @@ stateDiagram-v2
 stateDiagram-v2
     [*] --> DRAFT: Tạo bản nháp
     DRAFT --> GENERATING: Yêu cầu sinh tài liệu
-    GENERATING --> DOCX_READY: docxtpl render xong
+    GENERATING --> COMPLETED: docxtpl render xong + hash khớp
     GENERATING --> GENERATION_FAILED: Lỗi template/biến
 
-    DOCX_READY --> PDF_CONVERTING: INSERT job PDF_CONVERT
-    PDF_CONVERTING --> COMPLETED: LibreOffice trả PDF hợp lệ
-    PDF_CONVERTING --> PDF_FAILED: LibreOffice lỗi/timeout
-
-    PDF_FAILED --> PDF_CONVERTING: Thử lại (tự động ×3 rồi thủ công)
     GENERATION_FAILED --> GENERATING: Sửa dữ liệu rồi thử lại
 
     COMPLETED --> SUPERSEDED: Sinh lại bản mới (giữ bản cũ)
     COMPLETED --> VOIDED: Huỷ hợp đồng (soft, có lý do)
-    DOCX_READY --> VOIDED
+    DRAFT --> VOIDED
+    GENERATING --> VOIDED
+    GENERATION_FAILED --> VOIDED
 
     SUPERSEDED --> [*]
     VOIDED --> [*]
 
-    note right of DOCX_READY
-        Trạng thái trung gian quan trọng:
-        người dùng đã tải DOCX được
-        ngay cả khi PDF chưa xong.
-        Hiện thực của P-08.
+    note right of COMPLETED
+        ⭐ D2.1: sau khi bỏ PDF, GENERATING đi
+        thẳng tới COMPLETED. DOCX_READY /
+        PDF_CONVERTING / PDF_FAILED đã bị gỡ:
+        chúng chỉ tồn tại để mô tả khoảng thời
+        gian giữa "có DOCX" và "có PDF", khoảng
+        đó nay bằng không.
     end note
 
     note right of SUPERSEDED
@@ -481,12 +463,8 @@ flowchart TD
     O --> P["DocxContextAdapter<br/>StyledValue → RichText"]
     P --> Q["docxtpl render"]
     Q --> R[("📄 contract.docx<br/>trong Vault")]
-    R --> S["LibreOffice<br/>--headless --convert-to pdf"]
-    S --> T[("📕 contract.pdf<br/>trong Vault")]
-
     R --> V[("💾 contract<br/>+ render_snapshot_enc<br/>+ contract_party<br/>+ sha256")]
-    T --> V
-    V --> W[/"⬇️ Tải 'Mẫu 01A - NGUYỄN VĂN A.pdf'<br/>Xem trước · In"/]
+    V --> W[/"⬇️ Tải 'Mẫu 01A - NGUYỄN VĂN A.docx'"/]
 
     V --> Y[("📋 activity_log<br/>append-only")]
     M --> Y
@@ -519,15 +497,13 @@ graph TB
             E1["ContractSystem.exe · 15 MB"]
             E2["cocas-backend\\ · 180 MB"]
             E3["postgres\\ · 250 MB"]
-            E4["libreoffice\\ · 420 MB"]
             E5["ocr-models\\ · 45 MB"]
         end
 
-        subgraph RUNTIME["⚙️ Tiến trình lúc chạy — RAM nghỉ ~460 MB / đỉnh ~1.55 GB"]
+        subgraph RUNTIME["⚙️ Tiến trình lúc chạy — ⭐ 3 tiến trình · RAM nghỉ ~460 MB / đỉnh ~1.37 GB"]
             R1["ContractSystem.exe<br/>Tauri + WebView2 · ~120 MB"]
             R2["cocas-backend.exe<br/>FastAPI :&lt;cổng động&gt; · ~280 MB"]
             R3["postgres.exe<br/>:55432 · ~60 MB"]
-            R4["soffice.bin<br/>LƯỜI — 0 MB khi nghỉ"]
         end
 
         subgraph DATA["💾 %LOCALAPPDATA%\\COCAS\\data\\ — ⭐ THỨ CẦN SAO LƯU"]

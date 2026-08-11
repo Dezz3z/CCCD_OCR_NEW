@@ -1,4 +1,4 @@
-"""⭐ The 19 Ports — every point at which infrastructure can be replaced (P-03).
+"""⭐ The 18 Ports — every point at which infrastructure can be replaced (P-03).
 
 Numbered per the lookup table in docs/design/12-dac-ta-module.md §12.19:
 
@@ -16,7 +16,7 @@ Numbered per the lookup table in docs/design/12-dac-ta-module.md §12.19:
 | 10 | IAliasRepository      | `persistence` |
 | 11 | IFileStorage          | `storage`     |
 | 12 | IDocumentRenderer     | `documents`   |
-| 13 | IPdfConverter         | `documents`   |
+| ~~13~~ | ~~IPdfConverter~~ | 🗑️ removed in D2.1 (§9.13) — number left vacant on purpose |
 | 14 | IUnitOfWork           | `persistence` |
 | 15 | IJobQueue             | `queue`       |
 | 16 | IClock                | `system`      |
@@ -34,9 +34,14 @@ port of its own.
 question no earlier module had to: *which* of the two circulating card
 generations is this? See `IDocumentTypeSelector` for why it cannot be the
 caller's answer.
+
+⭐ **Port 13 was removed in D2.1** together with PDF export (§9.13). The
+numbering keeps the gap rather than shifting 14–19 down, so every existing
+`§12.1x` citation in code, docs and commit history still points at the same
+thing. That is why 18 ports are numbered 1–19.
 """
 from cocas.domain.ports.crypto import AadContext, BidxField, ICryptoService
-from cocas.domain.ports.documents import IDocumentRenderer, IPdfConverter, PdfResult, RenderResult
+from cocas.domain.ports.documents import IDocumentRenderer, RenderResult
 from cocas.domain.ports.ocr import (
     DocumentTypeSpec,
     EngineInfo,
@@ -69,6 +74,8 @@ from cocas.domain.ports.persistence import (
     IReadWriteRepository,
     IUnitOfWork,
     IWriteRepository,
+    OcrFieldSnapshot,
+    OcrResultSnapshot,
     Page,
     Specification,
 )
@@ -97,7 +104,6 @@ __all__ = [
     "IJobQueue",
     "IMrzReader",
     "IOcrEngine",
-    "IPdfConverter",
     "IQrDecoder",
     "IReadRepository",
     "IReadWriteRepository",
@@ -109,9 +115,10 @@ __all__ = [
     "JobSnapshot",
     "JobTarget",
     "MrzExtractionResult",
+    "OcrFieldSnapshot",
     "OcrOptions",
+    "OcrResultSnapshot",
     "Page",
-    "PdfResult",
     "PreprocessProfile",
     "PreprocessedImageSet",
     "QrExtractionResult",

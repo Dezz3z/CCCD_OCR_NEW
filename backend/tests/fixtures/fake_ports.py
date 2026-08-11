@@ -3,7 +3,7 @@
 ⭐ Architecture acceptance criterion (§12.19): *"Mỗi Port phải có ít nhất một
 hiện thực fake/null dùng trong test."* This module is where that criterion is
 met. Every layer above Domain must be testable with these alone — if a test
-needs a real database, a real OCR engine, or a real LibreOffice, that is a
+needs a real database or a real OCR engine, that is a
 signal the port boundary leaked.
 
 These are deliberately dumb: they record calls and return canned values. Any
@@ -23,7 +23,7 @@ from cocas.domain.enums.field_key import FieldKey
 from cocas.domain.enums.job_status import JobStatus
 from cocas.domain.enums.job_type import JobType
 from cocas.domain.ports.crypto import AadContext, BidxField
-from cocas.domain.ports.documents import PdfResult, RenderResult
+from cocas.domain.ports.documents import RenderResult
 from cocas.domain.ports.ocr import (
     DocumentTypeSpec,
     EngineInfo,
@@ -433,36 +433,7 @@ class FakeDocumentRenderer:
         )
 
 
-class NullPdfConverter:
-    """Port 13 — the P-08 degraded path: PDF conversion unavailable.
-
-    Always raises, so tests can prove a dead converter still leaves the user
-    with a usable DOCX instead of failing the whole contract.
-    """
-
-    def convert(self, docx_path: str, output_dir: str, timeout_sec: int) -> PdfResult:
-        from cocas.domain.exceptions import LibreOfficeUnavailableError
-
-        raise LibreOfficeUnavailableError("Không có trình chuyển đổi PDF trong môi trường test.")
-
-
-class FakePdfConverter:
-    """Port 13 — the happy path."""
-
-    def __init__(self, page_count: int = 2) -> None:
-        self.page_count = page_count
-        self.calls: list[str] = []
-
-    def convert(self, docx_path: str, output_dir: str, timeout_sec: int) -> PdfResult:
-        self.calls.append(docx_path)
-        return PdfResult(
-            output_path=f"{output_dir}/out.pdf",
-            sha256=hashlib.sha256(docx_path.encode()).digest(),
-            size_bytes=1024,
-            page_count=self.page_count,
-            duration_ms=1,
-            generator_version="fake 1.0",
-        )
+# ⭐ Port 13 (IPdfConverter) had its fakes here until D2.1 removed the port.
 
 
 # ============================================================================

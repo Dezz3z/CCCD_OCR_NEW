@@ -7,7 +7,7 @@ error rather than a code-review comment.
 """
 from __future__ import annotations
 
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 from types import TracebackType
 from typing import Generic, Protocol, TypeVar, runtime_checkable
@@ -122,6 +122,62 @@ class AliasRecord:
     assigned_confidence: float
     alias_normalized: str | None = None
     keywords: tuple[str, ...] = ()
+
+
+@dataclass(frozen=True, slots=True)
+class OcrFieldSnapshot:
+    """One `ocr_field` row (§4.4.4), ready to be written.
+
+    ⭐ Why this exists instead of passing `ExtractionResult` straight to a
+    repository: `ExtractionResult` is an **Application** DTO, and
+    Infrastructure sits below Application in the layer contract. A repository
+    importing it would invert the dependency — caught by `import-linter`, but
+    the reason is older than the tool: the persistence layer would then have to
+    change every time the pipeline's return shape did.
+
+    So the Use Case translates, and this is the vocabulary it translates into.
+    `id` is client-generated (DB-01) so the caller knows the key before the
+    INSERT — which is what lets the AAD bind to the row's own id.
+    """
+
+    id: object
+    field_key: str
+    value: str | None
+    """The value fusion settled on. Written to **both** `normalized_value_enc`
+    and `final_value_enc`: they only diverge once a user edits the field, and
+    that divergence is what §14.7's improvement loop measures."""
+    raw_value: str | None
+    source: str
+    confidence: float
+    needs_review: bool
+    bbox: dict[str, float] | None = None
+    candidates: tuple[dict[str, object], ...] = ()
+    normalization_tier: int | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class OcrResultSnapshot:
+    """One `ocr_result` row plus its 6 `ocr_field` children (§4.4.3)."""
+
+    id: object
+    ocr_session_id: object
+    qr_available: bool
+    mrz_available: bool
+    channel_summary: Mapping[str, str]
+    validation_report: Mapping[str, object]
+    fields: tuple[OcrFieldSnapshot, ...]
+    qr_raw: str | None = None
+    mrz_raw: str | None = None
+    """⭐ Untouched channel payloads, stored encrypted. Optional because the
+    pipeline's result deliberately does not carry them — they are raw PII whose
+    only consumer is someone reproducing a bad read (§10.9 redacts them from
+    every log). `None` stores NULL and changes nothing else."""
+    mrz_checksum_valid: bool | None = None
+    mrz_corrections_applied: int | None = None
+    """⚠️ `None` and `0` are different facts: `None` means there was no MRZ to
+    read, `0` means one was read and needed no repair. §7.5's repair rate
+    divides by the second."""
+    cross_check_flags: tuple[str, ...] = ()
 
 
 @runtime_checkable

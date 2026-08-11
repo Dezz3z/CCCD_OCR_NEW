@@ -95,13 +95,16 @@ class ImageTooSmallError(OcrProcessingError):
 
 
 # ============================================================================
-# Document generation (§12.8 TemplateInspector, §12.11 DocxRenderer,
-# §12.12 IPdfConverter)
+# Document generation (§12.8 TemplateInspector, §12.11 DocxRenderer)
+#
+# ⭐ D2.1 — `LibreOfficeUnavailableError`, `PdfConversionTimeoutError` and
+# `InvalidPdfOutputError` were removed here together with PDF export
+# (§9.13). Rendering the `.docx` is now the last step that can fail.
 # ============================================================================
 
 
 class DocumentGenerationError(DomainException):
-    """Base for every template-inspection, DOCX-render, or PDF-convert failure."""
+    """Base for every template-inspection or DOCX-render failure."""
 
     code = "DOCUMENT_GENERATION_ERROR"
 
@@ -139,24 +142,6 @@ class RenderError(DocumentGenerationError):
     """`docxtpl` rendering failed."""
 
     code = "RENDER_ERROR"
-
-
-class LibreOfficeUnavailableError(DocumentGenerationError):
-    """The `soffice` listener could not be started or reached."""
-
-    code = "LIBREOFFICE_UNAVAILABLE"
-
-
-class PdfConversionTimeoutError(DocumentGenerationError):
-    """DOCX→PDF conversion did not complete within the configured timeout."""
-
-    code = "PDF_CONVERSION_TIMEOUT"
-
-
-class InvalidPdfOutputError(DocumentGenerationError):
-    """The converter produced a file that is not a valid PDF."""
-
-    code = "INVALID_PDF_OUTPUT"
 
 
 # ============================================================================

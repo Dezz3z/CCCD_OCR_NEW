@@ -8,6 +8,9 @@ Entities module) never carries that ciphertext, only its hash
 exist until P3. Building a Contract repository now would guess at a shape
 that P3 will very likely change — deferred on purpose (P-10).
 """
+from cocas.infrastructure.persistence.repositories.alias_repository import (
+    SqlAlchemyAliasRepository,
+)
 from cocas.infrastructure.persistence.repositories.bank_account_repository import (
     SqlAlchemyBankAccountRepository,
 )
@@ -20,6 +23,12 @@ from cocas.infrastructure.persistence.repositories.contract_party_repository imp
 from cocas.infrastructure.persistence.repositories.customer_repository import (
     SqlAlchemyCustomerRepository,
 )
+from cocas.infrastructure.persistence.repositories.document_type_repository import (
+    SqlAlchemyDocumentTypeRepository,
+)
+from cocas.infrastructure.persistence.repositories.ocr_result_repository import (
+    SqlAlchemyOcrResultRepository,
+)
 from cocas.infrastructure.persistence.repositories.ocr_session_repository import (
     SqlAlchemyOcrSessionRepository,
 )
@@ -31,10 +40,13 @@ from cocas.infrastructure.persistence.repositories.template_version_repository i
 )
 
 __all__ = [
+    "SqlAlchemyAliasRepository",
     "SqlAlchemyBankAccountRepository",
     "SqlAlchemyCardImageRepository",
     "SqlAlchemyContractPartyRepository",
     "SqlAlchemyCustomerRepository",
+    "SqlAlchemyDocumentTypeRepository",
+    "SqlAlchemyOcrResultRepository",
     "SqlAlchemyOcrSessionRepository",
     "SqlAlchemyTemplateRepository",
     "SqlAlchemyTemplateVersionRepository",

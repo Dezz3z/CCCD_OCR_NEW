@@ -17,7 +17,7 @@ Xem [`CLAUDE.md`](CLAUDE.md) để biết 13 nguyên tắc bất biến, ngăn x
 | Backend | Python 3.11+ · FastAPI · Pydantic v2 · Uvicorn |
 | OCR | PaddleOCR PP-OCRv4 (CPU, offline) + OpenCV + zxing-cpp |
 | CSDL | PostgreSQL 16 portable · SQLAlchemy 2.0 async · Alembic |
-| Tài liệu | docxtpl (Jinja2 sandboxed) + LibreOffice headless CLI |
+| Tài liệu | docxtpl (Jinja2 sandboxed) — ⭐ chỉ xuất `.docx` |
 
 ## Trạng thái hiện tại
 

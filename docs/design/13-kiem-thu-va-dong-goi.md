@@ -15,7 +15,7 @@
                    ╱E2E╲          ~15 kịch bản  ·  chậm (2–5 phút)
                   ╱──────╲        Playwright + app thật
                  ╱ Integr. ╲      ~180 test  ·  trung bình (10–60s)
-                ╱────────────╲    DB thật · OCR thật · LibreOffice thật
+                ╱────────────╲    DB thật · OCR thật · docxtpl thật
                ╱     Unit     ╲   ~650 test  ·  nhanh (< 5s toàn bộ)
               ╱────────────────╲  Domain + Application, không I/O
              ╱   Static Checks  ╲ ruff · mypy · import-linter · bandit
@@ -73,7 +73,7 @@
 | **Repository** | PostgreSQL (`testcontainers`) | ~50 | CRUD · phân trang · blind index · optimistic lock (chỉ `contract`) · dịch ngoại lệ |
 | **Migration** | PostgreSQL | 3 | `upgrade head` → `downgrade base` → `upgrade head` · seed idempotent · phát hiện schema mới hơn app |
 | ⭐ **OCR Pipeline** | PaddleOCR thật + Golden Set | ~40 | Xem §13.5 |
-| **Sinh tài liệu** | docxtpl + LibreOffice thật | ~25 | Render 2 mẫu thật · ⭐ kiểm run của STK CK có `bold=True` · biến suppressed là chuỗi rỗng · PDF trích được văn bản |
+| **Sinh tài liệu** | docxtpl thật | ~25 | Render 2 mẫu thật · ⭐ kiểm run của STK CK có `bold=True` · biến suppressed là chuỗi rỗng · ⭐ mở lại `.docx` bằng `python-docx` và tìm được họ tên/CCCD/STK |
 | **Template Engine** | File `.docx` thật | ~20 | Quét biến bằng AST · 10 mã chẩn đoán · ⭐ chặn SSTI |
 | **API** | App đầy đủ + DB | ~45 | 64 endpoint · mã trạng thái · cấu trúc lỗi · `next_actions` |
 | **Vault** | Hệ thống tệp thật | ~15 | Mã hoá/giải mã · chống traversal · write-temp-rename |
@@ -114,15 +114,14 @@ Chạy bằng Playwright trên ứng dụng Tauri đã build (WebDriver của Ta
 
 | # | Kịch bản | Bước chính |
 |---|---|---|
-| E1 | ⭐ **Luồng vàng — mẫu 01A/HĐ-GĐN** | Mở app → chọn mẫu → tải 2 ảnh → chờ OCR → sửa 1 trường → nhập liên hệ + ngân hàng → tạo → tải PDF → ⭐ xác nhận tên file `Mẫu 01A - NGUYỄN VĂN AN.pdf` |
-| E2 | ⭐ **Luồng vàng — mẫu 01A/GDKQ** | Như trên nhưng có ô STK chứng khoán, **không có** khối ngân hàng → ⭐ PDF có STK **in đậm** |
+| E1 | ⭐ **Luồng vàng — mẫu 01A/HĐ-GĐN** | Mở app → chọn mẫu → tải 2 ảnh → chờ OCR → sửa 1 trường → nhập liên hệ + ngân hàng → tạo → tải DOCX → ⭐ xác nhận tên file `Mẫu 01A - NGUYỄN VĂN AN.docx` |
+| E2 | ⭐ **Luồng vàng — mẫu 01A/GDKQ** | Như trên nhưng có ô STK chứng khoán, **không có** khối ngân hàng → ⭐ DOCX có STK **in đậm** |
 | E3 | Khách hàng đã có | Chọn mẫu → "Chọn khách hàng đã có" → bỏ qua OCR → tạo hợp đồng (~20 giây) |
 | E4 | Tải nhầm thứ tự 2 mặt | Hệ thống tự hoán đổi, hiện thông báo + [Hoàn tác], vẫn tạo được |
 | E5 | Tải trùng một mặt | Hiện lỗi rõ ràng, chặn tiếp tục |
 | E6 | Ảnh chất lượng kém | Cảnh báo vàng, nhiều ô cần kiểm tra, vẫn hoàn tất được |
 | E7 | CCCD trùng | Hộp thoại chọn "cập nhật" hay "tạo mới" |
 | E8 | Đăng ký mẫu mới | Tải `.docx` → xem báo cáo biến → xem thử → kích hoạt → tạo hợp đồng bằng mẫu mới |
-| E9 | LibreOffice chết | Kill `soffice` → PDF `FAILED` → ⭐ **DOCX vẫn tải được** → thử lại thành công |
 | E10 | Sao lưu & khôi phục | Tạo backup → xoá dữ liệu → khôi phục → dữ liệu quay lại đủ |
 | E11 | ⭐ **Mất điện giữa chừng** | Kill toàn bộ tiến trình khi đang OCR → mở lại → job `FAILED`, nháp form được khôi phục |
 | E12 | Khôi phục nháp | Đóng app giữa bước 2 → mở lại → dữ liệu đang nhập còn nguyên |
@@ -159,9 +158,9 @@ Chạy bằng Playwright trên ứng dụng Tauri đã build (WebDriver của Ta
 |---|---|---|
 | C1 | `taskkill /F` backend giữa lúc OCR | Tauri restart · job `STALE_JOB_RECOVERED` · không hỏng DB |
 | C2 | `taskkill /F` PostgreSQL | Health `UNHEALTHY` · màn hình chẩn đoán · khởi động lại được |
-| C3 | Kill `soffice` giữa lúc convert | `PDF_FAILED` · DOCX nguyên vẹn · listener tự khởi động lại |
+| C3 | ⭐ Kill backend giữa lúc render | Không còn `.tmp` ở vị trí `.docx`; hợp đồng `GENERATING` được job phục hồi đánh `GENERATION_FAILED`; sinh lại thành công |
 | C4 | Xoá file trong Vault khi app đang chạy | Tải xuống trả `COCAS-8002` · job đối chiếu phát hiện |
-| C5 | ⭐ Sửa 1 byte trong file PDF đã sinh | Tải xuống **bị chặn** với `COCAS-7009` |
+| C5 | ⭐ Sửa 1 byte trong file DOCX đã sinh | Tải xuống **bị chặn** với `COCAS-7009` |
 | C6 | Làm đầy ổ đĩa giữa lúc sinh hợp đồng | `507` · rollback · không có file mồ côi |
 | C7 | Đổi giờ hệ thống lùi lại | Không sinh trùng `contract_no` |
 | C8 | Xoá file `master.key.dpapi` | Health `UNHEALTHY` · hướng dẫn khôi phục từ backup |
@@ -224,7 +223,6 @@ ContractSystem-Setup-1.0.0.exe   (NSIS · ~1.1 GB · đã ký số)
 ├── ContractSystem.exe           15 MB   Tauri shell
 ├── cocas-backend/              180 MB   PyInstaller onedir
 ├── postgres/                   250 MB   Nhị phân portable
-├── libreoffice/                420 MB   Portable + FONT TIẾNG VIỆT
 ├── ocr-models/                  45 MB   PP-OCRv4 det/rec/cls
 ├── fonts/                        8 MB   Inter · JetBrains Mono
 ├── sample-templates/             1 MB   2 mẫu HĐ (dữ liệu giả)
@@ -399,8 +397,6 @@ Nếu chọn xoá toàn bộ → yêu cầu **gõ chữ `XOA TAT CA`** để xá
 | "Không kết nối được cơ sở dữ liệu" | PostgreSQL chưa khởi động | Màn hình chẩn đoán → "Khởi động lại dịch vụ" |
 | Bootstrap dừng ở bước 2 | ⭐ Đường dẫn có tiếng Việt / ký tự lạ | Cài lại vào đường dẫn không dấu |
 | "OCR chưa sẵn sàng" | Model thiếu hoặc hỏng | Chạy lại installer chọn "Sửa chữa" |
-| PDF không tạo được | LibreOffice bị chặn bởi antivirus | Thêm ngoại lệ cho `soffice.bin` |
-| ⭐ PDF sai font, mất dấu tiếng Việt | Thiếu font trong LibreOffice portable | Lỗi đóng gói — phát hành bản vá |
 | Khởi động rất chậm (> 60s) | Antivirus quét toàn bộ thư mục app mỗi lần | Thêm ngoại lệ cho thư mục cài đặt |
 | Cảnh báo SmartScreen | Chứng chỉ chưa đủ uy tín | Bấm "Thông tin thêm" → "Vẫn chạy"; sẽ hết sau vài trăm lượt cài |
 | ⭐ "Không giải mã được dữ liệu" | Admin đã reset mật khẩu Windows → DPAPI mất khoá | Khôi phục từ bản sao lưu |

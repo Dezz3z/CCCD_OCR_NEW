@@ -67,7 +67,7 @@
 | Bind cứng `127.0.0.1` | Không bao giờ `0.0.0.0` |
 | Không có HTTP client ra ngoài | ⭐ Kiểm chứng: test tích hợp chạy trong máy ảo **đã ngắt mạng**, toàn bộ luồng phải hoàn tất |
 | CSP của Tauri | `connect-src 'self' http://127.0.0.1:<port>` — không có nguồn ngoài nào |
-| Model OCR, font, LibreOffice đóng gói sẵn | Không tải gì lúc chạy |
+| Model OCR + font đóng gói sẵn | Không tải gì lúc chạy |
 | Không telemetry, không auto-update online | Cập nhật bằng cách chạy installer mới |
 
 **Content Security Policy đầy đủ:**
@@ -281,7 +281,7 @@ Chi tiết đầy đủ: xem [04-co-so-du-lieu.md §4.8](04-co-so-du-lieu.md#48-
 | `INFO` | ⭐ Sự kiện nghiệp vụ bình thường | "OCR completed", "Contract generated" | ✅ |
 | `SUCCESS` | Hoàn tất tác vụ quan trọng | "Backup completed: 47 MB in 68s" | ✅ |
 | `WARNING` | Bất thường nhưng đã xử lý | "QR decode failed, falling back to MRZ" | ✅ |
-| `ERROR` | Thao tác thất bại, người dùng bị ảnh hưởng | "PDF conversion timed out after 60s" | ✅ |
+| `ERROR` | Thao tác thất bại, người dùng bị ảnh hưởng | "DOCX render failed: undefined variable" | ✅ |
 | `CRITICAL` | Hệ thống không hoạt động đúng | "Cannot load KEK from DPAPI" | ✅ |
 
 **Ba quy tắc bắt buộc:**
@@ -339,11 +339,11 @@ graph LR
 |---|---|
 | Nguồn | Client gửi `X-Correlation-ID`; không có thì server sinh UUIDv4 |
 | Truyền | `contextvars` — tự động theo async task, không cần truyền tham số thủ công |
-| ⭐ Xuyên job nền | Lưu vào `job.correlation_id` khi enqueue; JobRunner khôi phục vào contextvars → **log của job PDF nối liền được với request tạo hợp đồng** |
+| ⭐ Xuyên job nền | Lưu vào `job.correlation_id` khi enqueue; JobRunner khôi phục vào contextvars → **log của job OCR nối liền được với request tải ảnh** |
 | Trả lại | Luôn có trong response header và trong `error.correlation_id` |
 | Hiển thị | Ở khối "Chi tiết kỹ thuật" và màn hình lỗi, có nút "Sao chép" |
 
-**Giá trị thực tế:** người dùng báo *"hợp đồng lúc 9 giờ sáng bị lỗi PDF"* → hỏi mã truy vết → `grep` một chuỗi trong log → thấy toàn bộ chuỗi sự kiện từ lúc tải ảnh đến lúc LibreOffice timeout.
+**Giá trị thực tế:** người dùng báo *"hợp đồng lúc 9 giờ sáng tạo không được"* → hỏi mã truy vết → `grep` một chuỗi trong log → thấy toàn bộ chuỗi sự kiện từ lúc tải ảnh đến lúc render thất bại.
 
 ---
 
@@ -377,7 +377,7 @@ COMMIT
 | `CUSTOMER_CREATED` | `{"fields_from_ocr":["full_name","id_number","dob"],"fields_manual":["phone","email"],"ocr_session_id":"...","data_quality":"MIXED"}` |
 | `CUSTOMER_UPDATED` | `{"changed_fields":["phone","address"]}` ⭐ *chỉ tên trường, không giá trị cũ/mới* |
 | `CONTRACT_GENERATED` | `{"contract_no":"01A-GDN-202608-00042","template_code":"01A_HD_GDN","template_version":1,"party_count":1,"docx_sha256":"a1b2...","duration_ms":712}` |
-| `DOCUMENT_DOWNLOADED` | `{"contract_id":"...","doc_type":"PDF","file_sha256":"9f8e..."}` |
+| `DOCUMENT_DOWNLOADED` | `{"contract_id":"...","doc_type":"DOCX","file_sha256":"9f8e..."}` |
 | `OCR_FIELD_CORRECTED` | `{"session_id":"...","field":"issue_place","source_was":"OCR","confidence_was":0.72}` ⭐ *không có giá trị trước/sau* |
 | `SETTING_CHANGED` | `{"key":"ocr.review_threshold","from":0.85,"to":0.80}` |
 | `BACKUP_CREATED` | `{"file_sha256":"...","size_bytes":49283847,"customer_count":137,"duration_ms":68120}` |
@@ -441,7 +441,7 @@ Người dùng bấm **"Xuất gói chẩn đoán"** ở màn hình Chẩn đoá
 | Log ứng dụng 7 ngày gần nhất | ❌ Đã che | |
 | Log lỗi 30 ngày | ❌ Đã che | |
 | Thông tin hệ thống | ❌ | Phiên bản Windows, RAM, CPU, dung lượng đĩa |
-| Phiên bản các thành phần | ❌ | App, schema, PaddleOCR, LibreOffice, PostgreSQL |
+| Phiên bản các thành phần | ❌ | App, schema, PaddleOCR, PostgreSQL |
 | Kết quả health check | ❌ | |
 | Cấu hình hệ thống | ❌ | ⭐ Khoá có `is_sensitive=true` bị thay bằng `[REDACTED]` |
 | 200 bản ghi nhật ký gần nhất | ❌ | Chỉ mã hành động, không giá trị |
@@ -463,7 +463,7 @@ Người dùng bấm **"Xuất gói chẩn đoán"** ở màn hình Chẩn đoá
 | Confidence theo trường | `ocr_field.confidence` | Chất lượng theo thời gian |
 | ⭐ **Correction Rate** | `ocr_field.user_corrected` | **Báo cáo độ chính xác thật** (Dashboard) |
 | Thời gian render DOCX | `contract_document.generation_ms` | |
-| Thời gian chuyển PDF | `contract_document.generation_ms` | |
+| Thời gian sinh DOCX | `contract_document.generation_ms` | |
 | Truy vấn chậm > 100 ms | Log `WARNING` | Phát hiện truy vấn cần index |
 | Thời gian chờ hàng đợi | `job.started_at - job.created_at` | |
 | Dung lượng Vault | Health check | Cảnh báo dung lượng |

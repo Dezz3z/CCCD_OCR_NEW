@@ -41,7 +41,7 @@ class TestMemberValues:
 
     def test_job_type(self) -> None:
         assert {m.value for m in JobType} == {
-            "OCR", "PDF_CONVERT", "BACKUP", "RETENTION_PURGE", "ORPHAN_SWEEP", "TEMPLATE_VALIDATE",
+            "OCR", "BACKUP", "RETENTION_PURGE", "ORPHAN_SWEEP", "TEMPLATE_VALIDATE",
         }
 
     def test_job_status(self) -> None:
@@ -49,8 +49,8 @@ class TestMemberValues:
 
     def test_contract_status(self) -> None:
         assert {m.value for m in ContractStatus} == {
-            "DRAFT", "GENERATING", "DOCX_READY", "PDF_CONVERTING", "COMPLETED",
-            "GENERATION_FAILED", "PDF_FAILED", "SUPERSEDED", "VOIDED",
+            "DRAFT", "GENERATING", "COMPLETED",
+            "GENERATION_FAILED", "SUPERSEDED", "VOIDED",
         }
 
     def test_entity_type_v1_only_individual(self) -> None:
@@ -58,7 +58,7 @@ class TestMemberValues:
         assert {m.value for m in EntityType} == {"INDIVIDUAL"}
 
     def test_doc_type(self) -> None:
-        assert {m.value for m in DocType} == {"DOCX", "PDF"}
+        assert {m.value for m in DocType} == {"DOCX"}
 
     def test_gender(self) -> None:
         assert {m.value for m in Gender} == {"NAM", "NỮ", "KHÁC", "UNKNOWN"}

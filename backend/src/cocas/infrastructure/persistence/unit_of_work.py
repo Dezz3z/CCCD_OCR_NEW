@@ -23,6 +23,9 @@ from cocas.infrastructure.persistence.repositories.contract_party_repository imp
 from cocas.infrastructure.persistence.repositories.customer_repository import (
     SqlAlchemyCustomerRepository,
 )
+from cocas.infrastructure.persistence.repositories.ocr_result_repository import (
+    SqlAlchemyOcrResultRepository,
+)
 from cocas.infrastructure.persistence.repositories.ocr_session_repository import (
     SqlAlchemyOcrSessionRepository,
 )
@@ -53,6 +56,7 @@ class SqlAlchemyUnitOfWork:
         self._committed = False
         self.card_images = SqlAlchemyCardImageRepository(self._session)
         self.ocr_sessions = SqlAlchemyOcrSessionRepository(self._session)
+        self.ocr_results = SqlAlchemyOcrResultRepository(self._session, self._crypto)
         self.templates = SqlAlchemyTemplateRepository(self._session)
         self.template_versions = SqlAlchemyTemplateVersionRepository(self._session)
         self.contract_parties = SqlAlchemyContractPartyRepository(self._session)

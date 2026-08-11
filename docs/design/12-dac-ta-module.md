@@ -296,32 +296,18 @@
 
 ---
 
-## 12.12. `PdfConverter` & `LibreOfficeManager`
+## 12.12. ~~`PdfConverter` & `LibreOfficeManager`~~ — 🗑️ ĐÃ GỠ (D2.1)
 
-### `IPdfConverter`
+> ⭐ **Mục này đã bị gỡ bỏ cùng toàn bộ khâu xuất PDF.** Xem §9.13 để biết lý do đầy đủ.
+>
+> **Số mục §12.12 được giữ nguyên chỗ trống có chủ ý** — đánh lại số từ §12.13 trở đi sẽ làm sai mọi trích dẫn `§12.1x` đang tồn tại trong mã nguồn, tài liệu khác và lịch sử commit. Cùng lý do đó, **Port số 13 để khuyết** trong bảng §12.19: 18 Port, đánh số 1–19.
 
-| Mục | Nội dung |
+| Đã gỡ | Thay bằng |
 |---|---|
-| **Tầng** | Domain (Port) · hiện thực `LibreOfficePdfConverter` |
-| **Phương thức** | `convert(docx_path: Path, output_dir: Path, timeout_sec: int) -> PdfResult` |
-| **Tiền điều kiện** | `soffice` tồn tại tại đường dẫn cấu hình; DOCX hợp lệ |
-| **Hậu điều kiện** | PDF tại `output_dir`, 5 byte đầu là `%PDF-`, số trang > 0 |
-| **Bất biến** | ⭐ Timeout **luôn** dẫn tới kill **cây tiến trình** — không để lại `soffice` mồ côi |
-| **Bất biến** | Mỗi lần chạy dùng `-env:UserInstallation` trỏ hồ sơ riêng |
-| **Ném ra** | `LibreOfficeUnavailableError` · `PdfConversionTimeoutError` · `InvalidPdfOutputError` |
-| **Retry** | ⭐ **Không tự retry** — việc retry do `JobRunner` quyết định (tối đa 3 lần, backoff 5s/25s/125s) |
-| **Đầu ra** | `PdfResult{ output_path, sha256, size_bytes, page_count, duration_ms, generator_version }` |
-
-### `LibreOfficeManager` (vòng đời listener)
-
-| Mục | Nội dung |
-|---|---|
-| **Tầng** | Infrastructure |
-| **Phương thức** | `ensure_started() -> bool` · `shutdown() -> None` · `restart() -> None` · `is_alive() -> bool` |
-| **Bất biến** | ⭐ **Khởi động LƯỜI** — chỉ bật khi `ensure_started()` được gọi (từ bước 1 wizard hoặc lúc convert) |
-| **Bất biến** | ⭐ **Tự tắt sau `document.libreoffice_idle_shutdown_min` phút** không dùng (mặc định 20) |
-| **Bất biến** | Khi ứng dụng thoát, kill toàn bộ PID `soffice` do mình tạo |
-| **Đo lường** | Ghi log thời điểm bật/tắt để chẩn đoán |
+| Port `IPdfConverter` + `PdfResult` | *(không có gì — `IDocumentRenderer` là điểm cuối của chuỗi sinh tài liệu)* |
+| `LibreOfficePdfConverter` · `NullConverter` | — |
+| `LibreOfficeManager` (vòng đời listener lười) | — |
+| `LibreOfficeUnavailableError` · `PdfConversionTimeoutError` · `InvalidPdfOutputError` | — |
 
 ---
 
@@ -369,8 +355,27 @@
 |---|---|
 | **Phương thức** | `__aenter__` / `__aexit__` · `commit()` · `rollback()` · thuộc tính truy cập từng repository |
 | **Bất biến** | ⭐ Thoát khối `async with` mà chưa `commit()` → **tự động rollback** |
-| **Bất biến** | Một Use Case = một UoW = một transaction |
+| **Bất biến** | Một Use Case = một UoW = một transaction — ⚠️ **trừ ngoại lệ dưới đây** |
 | **Bất biến** | ⭐ Thao tác file **không nằm trong** transaction: *ghi tạm → commit → rename* |
+
+#### ⭐ 12.14.1. Ngoại lệ: Use Case có công việc dài chạy ở giữa
+
+`ProcessOcrSessionUseCase` (P3 module 2) dùng **hai transaction ngắn kẹp lấy lượt OCR**, không phải một. Đây là ngoại lệ được ghi nhận, không phải vi phạm bị bỏ sót.
+
+| | |
+|---|---|
+| **Transaction 1** | Nạp `ocr_session` → chuyển `PROCESSING` → commit |
+| **(ngoài transaction)** | Chạy `ExtractionPipeline` — đo được **~9.5 s/cặp** (§7.4.6) |
+| **Transaction 2** | Ghi `ocr_result` + 6 `ocr_field` → cập nhật `ocr_session` → commit |
+
+**Vì sao không gộp làm một:**
+
+1. Một transaction bao trọn 9.5 giây sẽ **giữ một kết nối trong pool suốt 9.5 giây mà không dùng đến nó**. Với 1 worker Uvicorn và JobRunner polling bảng `job` mỗi 500 ms, đó chính là pool kết nối.
+2. Sự cố giữa chừng sẽ **rollback cả trạng thái `PROCESSING`**: phiên quay về `QUEUED`, endpoint tiến độ (§5.3.5) báo "chưa bắt đầu" trong khi log của worker đã chết nói ngược lại.
+
+⚠️ **Cái giá phải trả, nói rõ ra:** sự cố **giữa hai transaction** để lại phiên `PROCESSING` vĩnh viễn. Đó đúng là việc của cơ chế phục hồi job treo (§12.15), và mọi công việc chạy dài trong hệ thống đều trả cái giá này.
+
+> **Quy tắc chung rút ra:** một Use Case được phép nhiều hơn một transaction **khi và chỉ khi** giữa chúng là công việc ngoài cơ sở dữ liệu tính bằng giây. Nhiều transaction vì "cho gọn code" thì không.
 
 ---
 
@@ -387,7 +392,7 @@
 | **Bất biến** | ⭐ Ngoại lệ trong handler **không bao giờ** làm chết worker — được bắt, ghi vào `job.error_detail`, chuyển `FAILED` |
 | **Phục hồi** | Lúc khởi động: job `RUNNING` với `heartbeat_at` cũ hơn 5 phút → `FAILED` với `STALE_JOB_RECOVERED` |
 | **Retry** | Backoff luỹ thừa 5s/25s/125s, tối đa 3 lần, ⭐ **chỉ với lỗi `is_retryable_error = true`** |
-| **Độ trễ** | Nhận job ≤ 500 ms — không đáng kể so với OCR 4s và PDF 3s |
+| **Độ trễ** | Nhận job ≤ 500 ms — không đáng kể so với OCR 4s |
 
 ---
 
@@ -439,7 +444,7 @@
 
 ---
 
-## 12.19. Bảng tra cứu nhanh — 19 Port
+## 12.19. Bảng tra cứu nhanh — ⭐ 18 Port *(đánh số 1–19, khuyết 13)*
 
 | # | Port | Tầng hiện thực | Hiện thực chính |
 |---|---|---|---|
@@ -455,7 +460,7 @@
 | 10 | `IAliasRepository` | Infrastructure | `SqlAlchemyAliasRepository` (có cache) |
 | 11 | `IFileStorage` | Infrastructure | `EncryptedFileVault` · `PlainFileVault` (dev) |
 | 12 | `IDocumentRenderer` | Infrastructure | `DocxRenderer` |
-| 13 | `IPdfConverter` | Infrastructure | `LibreOfficePdfConverter` · `NullConverter` |
+| ~~13~~ | 🗑️ ~~`IPdfConverter`~~ | — | **Đã gỡ ở D2.1** (§12.12) — số thứ tự để khuyết có chủ ý |
 | 14 | `IUnitOfWork` | Infrastructure | `SqlAlchemyUnitOfWork` |
 | 15 | `IJobQueue` | Infrastructure | `JobRunner` (polling bảng `job`) |
 | 16 | `IClock` | Infrastructure | `SystemClock` · `FrozenClock` (test) |

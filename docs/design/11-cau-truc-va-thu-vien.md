@@ -2,7 +2,7 @@
 
 [← Mục lục](README.md)
 
-**Cây thư mục theo Clean Architecture · 39 thư viện Python**
+**Cây thư mục theo Clean Architecture · ⭐ 38 thư viện Python** *(D2.1 bỏ `pypdf`)*
 
 ---
 
@@ -63,8 +63,6 @@ cocas/
 │   │   │   │   ├── template_inspector.py
 │   │   │   │   ├── docx_context_adapter.py   # ⭐ StyledValue → docxtpl.RichText
 │   │   │   │   ├── docx_renderer.py
-│   │   │   │   ├── pdf_converter.py
-│   │   │   │   └── libreoffice_manager.py    # ⭐ Lifecycle lười, tắt sau 20 phút
 │   │   │   ├── storage/              #    encrypted_file_vault.py · path_guard.py
 │   │   │   ├── security/             #    dpapi.py · crypto.py · blind_index.py
 │   │   │   │                         #    local_token.py
@@ -142,7 +140,6 @@ cocas/
 │
 ├── resources/                        # ── Tài nguyên đóng gói kèm (KHÔNG trong Git)
 │   ├── ocr-models/                   #    PP-OCRv4: det · rec · cls  (~45 MB)
-│   ├── libreoffice/                  #    Portable + FONT TIẾNG VIỆT (~420 MB)
 │   ├── postgres/                     #    Nhị phân portable (~250 MB)
 │   ├── fonts/                        #    Inter · JetBrains Mono
 │   └── webview2/                     #    Bộ cài offline (~130 MB)
@@ -204,7 +201,7 @@ cocas/
 ├── app\        ← CHỈ ĐỌC   · installer ghi · xoá được khi gỡ cài
 │   ├── ContractSystem.exe
 │   ├── cocas-backend\   (PyInstaller onedir)
-│   ├── ocr-models\  libreoffice\  postgres\
+│   ├── ocr-models\  postgres\
 ├── data\       ← ĐỌC-GHI   · ⭐ ĐÂY LÀ THỨ CẦN SAO LƯU
 │   ├── pgdata\
 │   ├── vault\  templates\  lo-profile\
@@ -250,7 +247,7 @@ Ngoại lệ duy nhất: `cocas.container`
 
 # PHẦN B — THƯ VIỆN PYTHON
 
-## 11.6. Phụ thuộc production (39)
+## 11.6. Phụ thuộc production (⭐ 38)
 
 ### Web & API (5)
 
@@ -289,14 +286,13 @@ Ngoại lệ duy nhất: `cocas.container`
 | `rapidfuzz` | `3.10.*` | So khớp mờ — nhanh hơn `fuzzywuzzy` ~10×, giấy phép MIT |
 | `python-dateutil` | `2.9.*` | Phân tích ngày linh hoạt |
 
-### Sinh tài liệu (4)
+### Sinh tài liệu (⭐ 3)
 
 | Thư viện | Phiên bản | Mục đích | Ghi chú |
 |---|---|---|---|
 | `docxtpl` | `0.18.*` | Render DOCX từ template | Bao gồm `RichText` cho chữ đậm |
 | `python-docx` | `1.1.*` | Thao tác DOCX cấp thấp | Phụ thuộc của docxtpl; dùng trực tiếp để kiểm thử |
 | `jinja2` | `3.1.*` | Template engine | ⭐ Dùng `SandboxedEnvironment` |
-| `pypdf` | `5.1.*` | Kiểm tra PDF, đếm trang, trích văn bản | Thuần Python, không cần binary |
 
 ### Bảo mật (4)
 
@@ -312,10 +308,10 @@ Ngoại lệ duy nhất: `cocas.container`
 | Thư viện | Phiên bản | Mục đích | Ghi chú |
 |---|---|---|---|
 | `loguru` | `0.7.*` | Logging | API đơn giản, xoay vòng/nén sẵn có |
-| `tenacity` | `9.0.*` | Retry có backoff | Cho job và LibreOffice |
+| `tenacity` | `9.0.*` | Retry có backoff | Cho job nền |
 | `tomlkit` | `0.13.*` | Đọc/ghi TOML giữ định dạng | Cho `settings.toml` sửa được qua UI |
 | `uuid-utils` | `0.10.*` | ⭐ UUIDv7 | `uuid` chuẩn chưa có v7 |
-| `psutil` | `6.1.*` | Giám sát tiến trình, dung lượng đĩa | Health check, kill cây tiến trình LibreOffice |
+| `psutil` | `6.1.*` | Giám sát tiến trình, dung lượng đĩa | Health check, đo RAM/đĩa |
 | `orjson` | `3.10.*` | JSON nhanh | Response lớn và log có cấu trúc |
 | `anyio` | `4.6.*` | Tiện ích async (đi kèm FastAPI) | `run_in_executor` cho CPU-bound |
 
@@ -366,7 +362,7 @@ Ngoại lệ duy nhất: `cocas.container`
 | CVE nghiêm trọng | Cập nhật ngay, phát hành bản vá |
 | ⭐ **Kiểm tra giấy phép** | Toàn bộ phụ thuộc phải là MIT / BSD / Apache-2.0. Không dùng GPL trong mã liên kết |
 
-> ⭐ **LibreOffice là MPL-2.0 và chạy như tiến trình riêng qua CLI — không lây giấy phép.** Đây là lý do quan trọng chọn CLI thay vì thư viện liên kết (UNO Python bridge).
+> ⭐ **D2.1 — mục giấy phép của LibreOffice (MPL-2.0) đã bỏ cùng chính LibreOffice.** Không còn tiến trình con nào ngoài PostgreSQL.
 
 ---
 
@@ -388,7 +384,7 @@ Ngoại lệ duy nhất: `cocas.container`
 | `vitest` · `@testing-library/react` | | Unit test |
 | `@playwright/test` | | E2E test |
 
-> ⭐ **Không dùng:** `pdf.js` (WebView2 đã có trình xem PDF) · thư viện icon từ CDN · Google Fonts (font nhúng woff2).
+> ⭐ **Không dùng:** bất kỳ bộ xem tài liệu nhúng nào (D2.1 — đầu ra `.docx` mở bằng Word) · thư viện icon từ CDN · Google Fonts (font nhúng woff2).
 
 ---
 

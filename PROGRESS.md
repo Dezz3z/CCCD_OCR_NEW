@@ -342,26 +342,28 @@ Thẻ được **ghép từ chính dữ liệu, không từ tên file**: mọi �
 | # | Module | Trạng thái |
 |---|---|---|
 | 1 | ⭐ **`ExtractionPipeline`** (Application §12.3) — biến 7 Port của P2 thành một lời gọi | ✅ **2026-08-11** |
-| 2 | Alias repository + Use Case OCR + nối `container.py` | ⏳ |
+| 2 | ⭐ **Alias repository + Use Case OCR + nối `container.py`** | ✅ **2026-08-11** |
 | 3 | `TemplateInspector` (AST Jinja2, 10 mã chẩn đoán, chặn SSTI) | ⏳ |
 | 4 | `RenderContextBuilder` + `DocxContextAdapter` + `DocxRenderer` + repo `Contract` (nợ từ P1) | ⏳ |
-| 5 | `PdfConverter` + `LibreOfficeManager` + font tiếng Việt | ⏳ |
+| 5 | ~~`PdfConverter` + `LibreOfficeManager` + font tiếng Việt~~ | 🗑️ **ĐÃ GỠ (D2.1)** |
 | 6 | `JobRunner` (polling bảng `job`) | ⏳ |
-| 7 | 64 endpoint + test tích hợp | ⏳ |
+| 7 | ⭐ **62** endpoint + test tích hợp | ⏳ |
 
 **Deliverables:**
 - [x] ⭐ **`ExtractionPipeline`** — 9 chặng S3→S11, không bao giờ ném ngoại lệ, tiến độ mỗi chặng
 - [x] ⭐ **Port 19 `IDocumentTypeSelector`** + `MarkerDocumentTypeSelector` — nhận thế hệ thẻ từ chữ đã đọc
 - [x] ⭐ Migration `010` — cột `identity_markers` + 🔴 nới CHECK `tier_range` lên 1..5
+- [x] ⭐ **Port 10 `IAliasRepository` có hiện thực thật** + repo `document_type` + repo `ocr_result`
+- [x] ⭐ **`ProcessOcrSessionUseCase`** + `container.py` nối trọn chuỗi OCR
+- [x] ⭐ **D2.1 — gỡ toàn bộ khâu xuất PDF và LibreOffice** (migration `011`)
 - [ ] Template Engine + RenderContextBuilder
 - [ ] DOCX Renderer (2 mẫu thật, STK in đậm)
-- [ ] PDF Converter (LibreOffice listener lười)
 - [ ] Đặt tên file xuất
-- [ ] 64 endpoint
+- [ ] 62 endpoint
 - [ ] JobRunner (polling bảng job, không Queue)
 
 **Milestones:**
-- M3: API tuần tự → PDF mở được, STK in đậm
+- M3: API tuần tự → ⭐ **DOCX** mở được bằng Word, STK in đậm
 
 #### ⭐ Module 1 — `ExtractionPipeline` (2026-08-11)
 
@@ -390,11 +392,71 @@ Test: **1228 xanh** (từ 1155) · ruff sạch · `mypy --strict` sạch · impo
 - ⚠️ Ca Port 19 từ chối trả lời là một **mặt sau 2024** chữ nhoè. Tín hiệu **cấu trúc** (một ảnh mang cả QR lẫn MRZ ⇒ mặt sau 2024) giải được, nhưng Port 19 chỉ nhận `regions`. Vá được bằng cách thêm "thế hệ này in QR ở mặt nào" vào `document_type` — hoãn có chủ đích (P-10).
 - ⚠️ **Chưa chạy migration `010` trên PostgreSQL thật** — cụm portable ở cổng 55432 không chạy trên máy này. Test tĩnh đã kiểm tên ràng buộc và dải tầng, nhưng `upgrade head` thật vẫn là việc phải làm ở module 2.
 
+#### ⭐ D2.1 — Gỡ toàn bộ khâu xuất PDF và LibreOffice (2026-08-11)
+
+Quyết định của người dùng: **chỉ cần `.docx`**. Tài liệu thiết kế sửa trước, mã nguồn sau (đúng quy tắc trong `CLAUDE.md`).
+
+| Nơi | Trước | Sau |
+|---|---|---|
+| Port | 19 | ⭐ **18** — bỏ `IPdfConverter`, **để khuyết số 13** |
+| Endpoint | 64 | **62** — bỏ `retry-pdf` và `documents/pdf` |
+| `ContractStatus` | 9 giá trị | **6** — bỏ `DOCX_READY` · `PDF_CONVERTING` · `PDF_FAILED` |
+| `JobType` | 6 | **5** — bỏ `PDF_CONVERT` |
+| `DocType` | 2 | **1** |
+| Khoá cấu hình | 28 | **25** |
+| Lớp ngoại lệ | 23 | **20** |
+| Gói cài đặt (ước tính) | ~1.1 GB | ~700 MB |
+
+- **Vì sao để khuyết số Port 13 thay vì đánh lại số:** đánh lại sẽ làm sai mọi trích dẫn `§12.1x` đang nằm trong mã nguồn, tài liệu khác và lịch sử commit. Giữ khoảng trống là **rẻ hơn một lần** và **đúng mãi mãi**; đánh lại số là rẻ hôm nay và sai từ ngày mai. Cùng lý do với `COCAS-7004`/`7005`: gỡ mã lỗi nhưng **không tái sử dụng số**.
+- ⭐ **Gỡ PDF làm sụp luôn hai trạng thái trung gian.** `DOCX_READY` chỉ có nghĩa "đã có DOCX, chưa có PDF" — sau D2.1 khoảng thời gian đó bằng không, nên `GENERATING` đi thẳng `COMPLETED` và `mark_docx_ready()` nhập vào `mark_completed(snapshot_sha256, now)`. Giữ lại `DOCX_READY` sẽ là một trạng thái mà **không thao tác nào có thể quan sát được**.
+- ⚠️ **Migration `011` chuyển dữ liệu, không xoá.** Hợp đồng đang kẹt ở `DOCX_READY`/`PDF_CONVERTING`/`PDF_FAILED` đều có nghĩa *file `.docx` đã ghi xong* ⇒ chuyển sang `COMPLETED`. Xoá chúng là **huỷ chứng từ pháp lý** để làm vừa một ràng buộc CHECK. Chỉ job `PDF_CONVERT` đang xếp hàng bị xoá — chúng mô tả công việc không còn tồn tại.
+- ⚠️ **Seed migration `007` bị sửa tại chỗ xuống 25 khoá thay vì để `011` xoá bù.** Cơ sở dữ liệu seed **sau** D2.1 không được phép sinh ra 3 dòng mà `011` tồn tại để xoá; `011` chỉ dành cho CSDL seed trước nó.
+- ⭐ **Một con số dẫn xuất đã lạc hậu ngay lập tức:** "chính sách xoá ảnh giảm dung lượng **9 lần**" (§4.10) thành **~20 lần** sau khi bỏ 180 MB PDF/1000 hợp đồng. Khi phần "không phải ảnh" nhỏ đi thì tỉ lệ này **lớn lên**, không nhỏ đi — đúng chiều ngược với trực giác khi cắt phạm vi.
+- ⭐ **Rủi ro 🟠 "LibreOffice thiếu font tiếng Việt" đã đóng** — nó là rủi ro đứng đầu sổ P3 và biến mất cùng thứ sinh ra nó, không phải nhờ giảm nhẹ.
+- ⚠️ **Đổi lại, mất khung xem trước trong ứng dụng.** WebView2 xem được PDF nhưng không xem được `.docx`. W4/W6 nay chỉ hiện tên tài liệu + nút mở bằng Word — chấp nhận có chủ ý, vì người dùng vẫn phải mở Word để ký/sửa.
+
+Test: **1251 xanh** (từ 1224) · ruff sạch · `mypy --strict` sạch · import-linter 4/4.
+
+#### ⭐ Module 2 — Alias repository + Use Case OCR + nối `container.py` (2026-08-11)
+
+Thứ bị chặn từ module 1 đã thông: `ExtractionPipeline` **chạy được từ Composition Root với dữ liệu thật**.
+
+| Thành phần mới | Vai trò |
+|---|---|
+| `SqlAlchemyAliasRepository` | ⭐ Port 10 — hiện thực thật đầu tiên, có cache + `invalidate()` |
+| `SqlAlchemyDocumentTypeRepository` | Nạp `DocumentTypeSpec` (nguồn hợp lệ duy nhất cho tham số `doc_types`) |
+| `SqlAlchemyOcrResultRepository` | Ghi `ocr_result` + 6 `ocr_field`, mã hoá mọi giá trị |
+| `OcrResultSnapshot` / `OcrFieldSnapshot` | Từ vựng Domain để Application dịch `ExtractionResult` sang |
+| `ProcessOcrSessionUseCase` | Chạy chuỗi + lưu, dùng chung cho `POST /ocr` và job `OCR` |
+
+- ⭐ **Hai repository này nhận session *factory*, không nhận session.** Chúng phục vụ `IssuePlaceNormalizer` — một Domain Service sống suốt vòng đời tiến trình bên trong pipeline, không phục vụ transaction của một Use Case. Gắn session vào sẽ hoặc (a) ghim singleton vào một session mà Use Case sẽ đóng dưới chân nó, hoặc (b) kéo một lượt đọc 19 dòng dữ liệu tham chiếu vào transaction nghiệp vụ.
+- ⭐ **`find_by_alias` không phải một truy vấn riêng** mà đọc chính cache của `list_active`. Hai đường SQL khác nhau tới cùng một bảng là cách tầng 2 và tầng 3 bắt đầu bất đồng ý về việc *có những dòng nào*.
+- ⚠️ **`alias_normalized` là NULL ở dòng tầng 4** (chúng mang `keywords`). Tra cứu chuỗi rỗng mà khớp NULL sẽ trả về một dòng từ khoá và gán giá trị chuẩn của nó ở **độ tin cậy đầy đủ** — sai đầy tự tin, đúng loại lỗi §7.9 chặn phát hành.
+- ⭐ **Use Case dùng HAI transaction ngắn kẹp lấy lượt OCR** — ngoại lệ có chủ đích với §12.14, đã ghi vào tài liệu (§12.14.1). Một transaction bao trọn 9.5 giây sẽ giữ nguyên một kết nối pool trong 9.5 giây mà không dùng, và sự cố giữa chừng sẽ rollback cả trạng thái `PROCESSING` → phiên về `QUEUED` trong khi log nói ngược lại. Cái giá: sự cố **giữa** hai transaction để lại phiên `PROCESSING` vĩnh viễn — việc của cơ chế phục hồi job treo (§12.15).
+- ⭐ **Infrastructure không được import `ExtractionResult`.** Nó là DTO tầng Application, mà `cocas.infrastructure` nằm **dưới** `cocas.application` trong hợp đồng import-linter. Bản đầu của repository làm đúng thế và bị chặn — nên `OcrResultSnapshot` ra đời làm từ vựng Domain, và Use Case là bên dịch. Không cần thêm số Port nào: nó khớp `IWriteRepository[T]` (Port 9).
+- ⭐ **Phiên `FAILED` không có dòng `ocr_result` nào** (§4.4.3). Ghi một dòng toàn NULL sẽ khiến "lượt chạy không ra gì" không phân biệt được với "thẻ trắng".
+- ⚠️ **`mrz_corrections_applied`: `NULL` ≠ `0`.** `NULL` = không có MRZ để đọc; `0` = đọc được và không phải sửa gì. Tỉ lệ sửa lỗi §7.5 chia cho vế thứ hai — để `0` thay `NULL` sẽ kéo tỉ lệ xuống bằng dữ liệu không tồn tại.
+- ⚠️ **AAD gắn vào `ocr_field.id`, không gắn vào phiên hay tên trường.** Gắn thô hơn thì một ciphertext dời được giữa 6 dòng của cùng kết quả: `dob` dán đè `id_number` vẫn giải mã sạch và hợp đồng mang ngày sinh làm số căn cước.
+- ⭐ **`PaddleOcrAdapter.warm_up()` cố ý KHÔNG gọi trong `Container.__init__`** — nạp model từ đĩa phải hỏng to vào lúc có người đang nhìn, không phải lúc màn hình chờ đang che.
+
+⭐ **Chạy lại `verify_pipeline.py` sau toàn bộ thay đổi** (cùng 15 cặp, cùng máy): 15/15 thẻ đủ 6/6 trường, 0 ô review, conf 0.99, 1.00 lượt quét/cặp — **không hồi quy**.
+
+| Chỉ số thời gian | Lần đo 1 (module 1) | Lần đo 2 (sau module 2) |
+|---|---|---|
+| Trung bình / cặp | 9.5 s | **5.3 s** |
+| p95 / cặp | 12.4 s | **10.5 s** |
+| Số cặp vượt ngân sách 9 s | — | **1/15** |
+
+⚠️ **Đừng đọc đây là "đã nhanh hơn nhờ module 2".** Module 2 không đụng gì vào đường nhận dạng. Đây chính là **biến động 1.7 lần giữa hai lần chạy giống hệt nhau** đã ghi ở module 1, nay đo được lần thứ hai theo chiều ngược lại. Kết luận đúng duy nhất rút ra được: **p95 vẫn vượt 9 s, và một lần chạy vẫn không đủ để chốt hay bác bỏ chỉ tiêu này.**
+
+**Điểm mù còn lại của module 2:**
+- ⚠️ **5 test tích hợp mới chưa chạy trên PostgreSQL thật** (`tests/integration/persistence/test_ocr_persistence.py`) — cụm portable ở cổng 55432 vẫn không chạy trên máy này. Chúng là **cách duy nhất** kiểm chứng `ck_ocr_field__tier_range` đã nới đúng, và cùng lý do đó `upgrade head` với migration `010`+`011` vẫn là món nợ.
+- ⚠️ **Chưa có `IFileStorage`**, nên Use Case nhận **bytes ảnh** chứ không tự nạp từ Vault. Bên gọi (endpoint/job) chịu trách nhiệm đó — module 6/7.
+
 **Risks:**
 - 🔴 **p95 12.4 s/cặp so với ngân sách 9 s.** Đòn bẩy 2 đã cắt từ ~15.4 s xuống 9.5 s trung bình; phần còn lại nằm trong **bản thân lượt quét**. Ba hướng chưa thử: hạ `target_long_edge`; bỏ lượt đọc dải tiêu đề của bộ phân loại mặt khi QR/MRZ đã quyết; bỏ lần giải mã QR trùng mà bộ phân loại mặt gọi thêm (~66 ms/ảnh, đã đo, **cố ý chưa làm** vì mọi cách lấy an toàn đều phức tạp hơn phần lợi).
   - ⚠️ Máy đích thật vẫn **chưa biết**, và p95 từng lệch 1.7 lần giữa hai lần chạy giống hệt nhau. Đừng chốt hay bác bỏ chỉ tiêu này bằng một lần chạy.
-- 🟠 LibreOffice thiếu font tiếng Việt
-  - 🎯 Đầu P3: đóng gói font, test đầy đủ
+- ✅ ~~🟠 LibreOffice thiếu font tiếng Việt~~ — **đóng 2026-08-11 (D2.1)**: gỡ hẳn khâu xuất PDF, rủi ro biến mất cùng thứ sinh ra nó
 
 ---
 

@@ -2,7 +2,9 @@
 
 [← Mục lục](README.md)
 
-**docxtpl (Jinja2 sandboxed) · LibreOffice headless · Từ điển 25 biến**
+**docxtpl (Jinja2 sandboxed) · ⭐ Đầu ra DUY NHẤT là `.docx` · Từ điển 25 biến**
+
+> ⭐ **D2.1 — Đã gỡ bỏ hoàn toàn khâu xuất PDF và LibreOffice.** Hệ thống chỉ sinh `.docx`. Xem §9.13 để biết lý do và hệ quả.
 
 ---
 
@@ -263,7 +265,7 @@ data/templates/
 
 ## 9.10. Xem thử mẫu với dữ liệu giả
 
-`POST /templates/{id}/preview` sinh PDF từ **dữ liệu giả cố định**, không đụng dữ liệu thật:
+`POST /templates/{id}/preview` sinh **`.docx`** từ **dữ liệu giả cố định**, không đụng dữ liệu thật:
 
 | Biến | Giá trị giả |
 |---|---|
@@ -286,7 +288,7 @@ Bản xem thử **không tạo bản ghi `contract`**, không ghi vào Vault, fi
 
 ---
 
-# PHẦN B — SINH DOCX VÀ PDF
+# PHẦN B — SINH DOCX
 
 ## 9.11. Kiến trúc pipeline sinh tài liệu
 
@@ -305,22 +307,13 @@ graph TB
     H --> I["Đọc lại · tính SHA-256 · so khớp"]
     I -->|Lệch| E3["❌ COCAS-7009"]
     I --> J["os.replace .tmp → .docx<br/>INSERT contract_document"]
-    J --> K["status=DOCX_READY<br/>✅ TRẢ VỀ 201 NGAY (~500ms)"]
-
-    K --> L["INSERT job PDF_CONVERT"]
-    L --> M["LibreOfficePdfConverter<br/>listener đã ấm từ bước 1 wizard"]
-    M -->|Timeout/Lỗi| E4["⚠️ PDF_FAILED<br/>DOCX vẫn tải được"]
-    M --> N["Kiểm tra PDF hợp lệ<br/>magic %PDF- · đếm trang · trích text"]
-    N --> O["Ghi vào Vault · SHA-256<br/>INSERT contract_document"]
-    O --> P["status=COMPLETED ✅"]
+    J --> P["status=COMPLETED<br/>✅ TRẢ VỀ 201 NGAY (~500ms)"]
     P --> Q["Job RETENTION_PURGE<br/>xoá ảnh CCCD gốc"]
 
-    style K fill:#c8e6c9,stroke:#2e7d32,stroke-width:3px
     style P fill:#c8e6c9,stroke:#2e7d32,stroke-width:3px
-    style E4 fill:#ffe0b2,stroke:#ef6c00
 ```
 
-> ⭐ **Quyết định then chốt:** DOCX sinh **đồng bộ** và trả `201` ngay (~500 ms). PDF sinh **bất đồng bộ**. Người dùng có tài liệu dùng được sau nửa giây thay vì chờ LibreOffice 3–5 giây. Nếu LibreOffice chết, họ vẫn có DOCX — hệ thống không bao giờ đưa người dùng vào ngõ cụt (P-08).
+> ⭐ **Quyết định then chốt (D2.1):** toàn bộ việc sinh tài liệu là **một giao dịch đồng bộ** kết thúc bằng `201` sau ~500 ms. Không còn khâu bất đồng bộ nào sau khi ghi `.docx`, nên `contract` đi thẳng `GENERATING → COMPLETED`; không còn trạng thái trung gian `DOCX_READY`, không còn `PDF_CONVERTING`/`PDF_FAILED`.
 
 ---
 
@@ -341,39 +334,35 @@ graph TB
 
 ---
 
-## 9.13. Bộ chuyển đổi PDF
+## 9.13. ⭐ Đầu ra chỉ có `.docx` — đã gỡ PDF (D2.1)
 
-### 9.13.1. Chiến lược LibreOffice — KHỞI ĐỘNG LƯỜI
+**Quyết định:** hệ thống **không xuất PDF**. `.docx` là định dạng giao hàng duy nhất. LibreOffice bị gỡ khỏi ngăn xếp, khỏi gói cài đặt và khỏi mọi cấu hình.
 
-| Vấn đề | Giải pháp |
+### 9.13.1. Lý do
+
+| # | Lý do |
 |---|---|
-| **Cold start ~10 giây** | ⭐ **Khởi động listener LƯỜI**: bật ngay khi người dùng vào **bước 1 wizard (chọn mẫu)**, chạy nền song song với OCR → đến lúc sinh PDF thì đã ấm |
-| **Lãng phí RAM khi nghỉ** | ⭐ **Tắt sau 20 phút không dùng** (`document.libreoffice_idle_shutdown_min`). RAM nghỉ giảm từ 640 MB → **460 MB** |
-| **Xung đột hồ sơ người dùng** | Mỗi lần chạy dùng `-env:UserInstallation=file:///.../data/lo-profile` |
-| **Treo không phản hồi** | Timeout `document.libreoffice_timeout_sec` (mặc định 60). Quá hạn → **kill cây tiến trình**, khởi động lại listener |
-| **Rò rỉ tiến trình** | Tauri supervisor theo dõi PID; khi thoát ứng dụng, kill toàn bộ tiến trình `soffice` do mình tạo |
-| ⭐ **Font tiếng Việt** | **Đóng gói sẵn** font metric-compatible với Times New Roman / Arial / Calibri vào LibreOffice portable. **Thiếu font = PDF sai layout hoàn toàn** — đây là lỗi hay gặp nhất khi chuyển DOCX→PDF |
-| **Không có MS Office** | LibreOffice không cần Office cài sẵn (ADR-05) |
+| 1 | **Người dùng phải sửa được hợp đồng trước khi in.** Đó là cách dùng thật; PDF là bước thừa ngay sau khi tạo. |
+| 2 | ⭐ **Rủi ro font tiếng Việt biến mất cùng LibreOffice.** Đây là rủi ro 🟠 đứng đầu sổ rủi ro P3 (§14.5): thiếu font metric-compatible ⇒ PDF sai layout hoàn toàn. Không chuyển đổi thì không có lớp nào để hỏng. |
+| 3 | **Cắt ~350 MB khỏi gói cài đặt** và ~180 MB RAM thường trú của listener — ngân sách gói 1.5 GB (§14.5) bớt căng. |
+| 4 | ⭐ **Sinh tài liệu trở thành một giao dịch đồng bộ duy nhất** (P-10). Không còn job nền, không còn trạng thái trung gian, không còn cây tiến trình con phải giám sát/kill/khởi động lại. |
 
-### 9.13.2. Tham số dòng lệnh
+### 9.13.2. Hệ quả đã áp vào thiết kế
 
-```
-soffice --headless --norestore --nolockcheck --nodefault --nologo
-        -env:UserInstallation=file:///<data>/lo-profile
-        --convert-to pdf:writer_pdf_Export
-        --outdir <thư_mục_tạm>
-        <file_docx>
-```
+| Nơi | Thay đổi |
+|---|---|
+| Port | ⭐ **Bỏ Port 13 `IPdfConverter`** (§12.12). Còn **18 Port**, đánh số 1–19 **khuyết số 13** — giữ số cũ để mọi trích dẫn hiện có không lệch |
+| `ContractStatus` | 9 → **6 giá trị**: bỏ `DOCX_READY`, `PDF_CONVERTING`, `PDF_FAILED` (§4.3.3) |
+| `JobType` | Bỏ `PDF_CONVERT` — còn 5 |
+| `DocType` | Chỉ còn `DOCX` |
+| Endpoint | Bỏ `POST /contracts/{id}/retry-pdf` và `GET /contracts/{id}/documents/pdf`. **64 → 62 endpoint** |
+| Mã lỗi | Bỏ `COCAS-7004` (chuyển PDF thất bại) và `COCAS-7005` (LibreOffice timeout) |
+| Ngoại lệ | Bỏ `LibreOfficeUnavailableError`, `PdfConversionTimeoutError`, `InvalidPdfOutputError` |
+| Cấu hình | Bỏ 3 khoá `document.pdf_converter`, `document.libreoffice_timeout_sec`, `document.libreoffice_idle_shutdown_min`. **28 → 25 khoá** |
+| Thư viện | Bỏ `pypdf`. Không đóng gói LibreOffice portable, không đóng gói font metric-compatible |
+| Giao diện | Bỏ nút "Tải PDF"/"Thử lại tạo PDF"; nút tải xuống chỉ còn một |
 
-### 9.13.3. Kiểm tra PDF sau khi sinh
-
-| # | Kiểm tra | Nếu thất bại |
-|---|---|---|
-| 1 | File tồn tại và kích thước > 1 KB | `COCAS-7004` |
-| 2 | 5 byte đầu là `%PDF-` | `COCAS-7004` |
-| 3 | Đọc được số trang (bằng `pypdf`) | `COCAS-7004` |
-| 4 | Số trang > 0 | `COCAS-7004` |
-| 5 | ⭐ Trích được văn bản, chứa số hợp đồng | 🟡 cảnh báo — có thể font bị lỗi |
+> ⚠️ **Cột `contract_document.page_count` cũng bị bỏ.** Nó chỉ tồn tại vì `pypdf` đếm được số trang PDF; `.docx` không có khái niệm số trang cho tới khi một bộ xử lý văn bản dàn trang nó. Giữ lại cột này sẽ là một cột `NULL` vĩnh viễn, và sớm muộn ai đó sẽ hiển thị nó lên giao diện dưới dạng `0 trang`.
 
 ---
 
@@ -400,8 +389,8 @@ soffice --headless --norestore --nolockcheck --nodefault --nologo
 | 5 | Kiểm tên dành riêng (`CON`, `PRN`, `AUX`, `NUL`, `COM1`–`COM9`, `LPT1`–`LPT9`) → thêm `_` | — |
 | 6 | Cắt nếu > 180 ký tự (cắt phần tên khách hàng, giữ tiền tố mẫu) | — |
 | 7 | Bỏ dấu nếu `export.strip_diacritics = true` (mặc định **không**) | — |
-| 8 | Thêm phần mở rộng | `Mẫu 01A - NGUYỄN VĂN A.pdf` |
-| 9 | Nếu file đã tồn tại → thêm ` (2)`, ` (3)`… | `Mẫu 01A - NGUYỄN VĂN A (2).pdf` |
+| 8 | Thêm phần mở rộng | `Mẫu 01A - NGUYỄN VĂN A.docx` |
+| 9 | Nếu file đã tồn tại → thêm ` (2)`, ` (3)`… | `Mẫu 01A - NGUYỄN VĂN A (2).docx` |
 
 ### 9.14.3. Ba nơi tên file xuất hiện
 
@@ -417,8 +406,8 @@ soffice --headless --norestore --nolockcheck --nodefault --nologo
 
 | Mẫu | `export_name_pattern` | Ví dụ |
 |---|---|---|
-| `01A_HD_GDN` | `Mẫu 01A - {full_name}` | `Mẫu 01A - NGUYỄN VĂN AN.pdf` |
-| `01A_GDKQ` | `Mẫu 01A-GDKQ - {full_name}` ⚠️ | `Mẫu 01A-GDKQ - NGUYỄN VĂN AN.pdf` |
+| `01A_HD_GDN` | `Mẫu 01A - {full_name}` | `Mẫu 01A - NGUYỄN VĂN AN.docx` |
+| `01A_GDKQ` | `Mẫu 01A-GDKQ - {full_name}` ⚠️ | `Mẫu 01A-GDKQ - NGUYỄN VĂN AN.docx` |
 
 > ⚠️ **Cần xác nhận:** cả hai mẫu đều mang số hiệu **01A**. Nếu cùng dùng `Mẫu 01A - {full_name}` thì khi một khách hàng ký cả hai hợp đồng, hai file sẽ **trùng tên**.
 
@@ -429,7 +418,7 @@ soffice --headless --norestore --nolockcheck --nodefault --nologo
 | Thời điểm | Kiểm tra |
 |---|---|
 | Sau khi render DOCX | Đọc lại file, tính SHA-256, so với giá trị lúc ghi |
-| Sau khi chuyển PDF | Tính SHA-256, lưu vào `contract_document.file_sha256` |
+| Trước khi ghi bản ghi | Tính SHA-256 của `.docx` cuối cùng, lưu vào `contract_document.file_sha256` |
 | ⭐ **Mỗi lần tải xuống** | Đọc file, tính lại SHA-256, so với CSDL. Lệch → `COCAS-7009`, **từ chối trả file**, ghi nhật ký `DOCUMENT_INTEGRITY_FAILED` |
 | Job kiểm tra định kỳ | Hàng tuần đối chiếu toàn bộ `contract_document` với file thật; báo cáo ở màn hình Chẩn đoán |
 
@@ -446,10 +435,10 @@ soffice --headless --norestore --nolockcheck --nodefault --nologo
 | Checksum mẫu lệch | `GENERATION_FAILED` | "File mẫu đã bị thay đổi. Cần đăng ký lại." | Không |
 | Lỗi render Jinja2 | `GENERATION_FAILED` | "Lỗi trong mẫu hợp đồng tại '{v}'." | Không |
 | Hết đĩa | `GENERATION_FAILED` | "Không đủ dung lượng. Còn {x} MB." | Sau khi dọn đĩa |
-| ⭐ LibreOffice timeout | ⚠️ `PDF_FAILED` | ✅ **DOCX vẫn tải được** + nút "Thử lại tạo PDF" | Tự động ×3, rồi thủ công |
-| LibreOffice crash | ⚠️ `PDF_FAILED` | Như trên; listener tự khởi động lại | Như trên |
-| PDF sinh ra hỏng | ⚠️ `PDF_FAILED` | Như trên | Như trên |
+| ⭐ Hash đọc lại lệch với hash lúc ghi | `GENERATION_FAILED` · `COCAS-7009` | "Tài liệu ghi ra không toàn vẹn. Vui lòng thử lại." | Có — sinh lại |
 | Mất điện giữa chừng | `GENERATING` → job phục hồi đánh `FAILED` | "Công việc bị gián đoạn" trên Dashboard | Thủ công |
+
+> ⭐ **Sau D2.1 không còn lỗi nào chỉ làm hỏng "một nửa" đầu ra.** Trước đây `PDF_FAILED` là trạng thái *suy giảm* theo P-08 — hợp đồng vẫn dùng được ở dạng DOCX. Nay chỉ có một đầu ra: hoặc `.docx` ra đời trọn vẹn, hoặc `GENERATION_FAILED` và người dùng bấm sinh lại.
 
 ---
 
@@ -461,13 +450,12 @@ soffice --headless --norestore --nolockcheck --nodefault --nologo
 | Render DOCX | 280 ms | 700 ms | Tài liệu 3–6 trang |
 | Ghi + mã hoá + kiểm hash | 30 ms | 80 ms | |
 | **Tổng đến khi trả `201`** | **~350 ms** | **~870 ms** | Đạt NFR-03 |
-| Chuyển PDF (listener ấm) | 2.1 s | 4.5 s | Đạt NFR-04 |
-| Chuyển PDF (cold start) | 11 s | 15 s | ⭐ Không xảy ra nếu listener bật từ bước 1 wizard |
 
-**Ba tối ưu đã đưa vào thiết kế:**
-1. ⭐ **Khởi động LibreOffice lười nhưng sớm** — bật ở bước 1 wizard, tắt sau 20 phút nghỉ. Vừa tiết kiệm 180 MB RAM khi không dùng, vừa không ai phải chờ cold start.
-2. ⭐ **Tách DOCX/PDF thành 2 giao dịch** — người dùng không chờ.
-3. **Cache đối tượng template đã phân tích** trong bộ nhớ theo `(template_version_id, sha256)` — lần render thứ hai của cùng mẫu nhanh hơn ~40%.
+> ⭐ **D2.1: đây giờ cũng là tổng thời gian đến khi hợp đồng `COMPLETED`.** Trước khi gỡ PDF, người dùng nhận `201` sau ~870 ms nhưng phải chờ thêm 2.1–4.5 s (listener ấm) hoặc 11–15 s (cold start) mới có bản in. NFR-04 vì thế không còn đối tượng để áp.
+
+**Tối ưu còn lại trong thiết kế:**
+1. **Cache đối tượng template đã phân tích** trong bộ nhớ theo `(template_version_id, sha256)` — lần render thứ hai của cùng mẫu nhanh hơn ~40%.
+2. ⭐ **Render chạy trong `run_in_executor`** — CPU-bound, không chặn event loop của Uvicorn 1 worker.
 
 ---
 
@@ -478,9 +466,9 @@ soffice --headless --norestore --nolockcheck --nodefault --nologo
 | **Unit** | Bộ dựng ngữ cảnh: mỗi kiểu dữ liệu · giá trị `None` · `suppressed_variables` · `StyledValue` |
 | **Unit** | Đặt tên file: ký tự cấm · tên dành riêng · quá dài · trùng tên · dấu tiếng Việt |
 | **Integration** | Render 2 mẫu thật → mở lại bằng `python-docx`, kiểm tra: đủ 12/10 biến đã thay · ⭐ **run chứa STK chứng khoán có thuộc tính `bold = True`** · các biến suppressed là chuỗi rỗng |
-| **Integration** | Chuyển PDF → `pypdf` trích văn bản → kiểm chứa họ tên, số CCCD, STK CK |
+| **Integration** | ⭐ Mở lại `.docx` đã sinh bằng `python-docx`, ghép toàn bộ text → kiểm chứa họ tên, số CCCD, STK CK *(thay cho phép trích văn bản từ PDF trước D2.1)* |
 | ⭐ **Golden file** | So sánh output với file kỳ vọng đã duyệt bằng mắt. Bất kỳ thay đổi layout nào cũng làm test đỏ → buộc xem xét có chủ ý |
-| **Chaos** | Kill `soffice` giữa lúc chuyển → phải chuyển sang `PDF_FAILED`, DOCX nguyên vẹn, retry thành công |
+| **Chaos** | ⭐ Kill tiến trình backend giữa lúc render → không được để lại `.tmp` nào ở vị trí `.docx` cuối cùng, hợp đồng ở `GENERATING` phải được job phục hồi đánh `GENERATION_FAILED` và sinh lại được |
 | ⭐ **Bảo mật** | Template chứa `{{ ''.__class__.__mro__ }}` phải bị **từ chối lúc đăng ký** với `COCAS-6014`; nếu lọt qua thì sandbox phải chặn lúc render |
 
 ---

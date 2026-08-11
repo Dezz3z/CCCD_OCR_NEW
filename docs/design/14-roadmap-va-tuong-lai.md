@@ -44,7 +44,7 @@ gantt
 
     section P3 Nghiệp vụ
     Template Engine · Kiểm tra mẫu        :p3a, after p1b, 5d
-    DOCX · PDF · LibreOffice lười         :p3b, after p3a, 5d
+    DOCX (D2.1 - khong con PDF)            :p3b, after p3a, 5d
     Use Case · 64 endpoint                :p3c, after p2d, 5d
 
     section P4 Giao diện
@@ -145,14 +145,13 @@ gantt
 | **Template Engine** | Quét biến bằng **AST Jinja2** · 10 mã chẩn đoán · ⭐ **SandboxedEnvironment chặn `{{ ''.__class__ }}`** |
 | **RenderContextBuilder + DocxContextAdapter** | ⭐ Application chỉ tạo `StyledValue`; Infrastructure chuyển thành `RichText` |
 | **DOCX Renderer** | Render 2 mẫu thật · write-temp→verify→rename · p95 ≤ 800 ms · ⭐ **STK chứng khoán in đậm** |
-| **PDF Converter** | ⭐ LibreOffice **listener lười** (bật từ bước 1 wizard, tắt sau 20 phút) · timeout · retry ×3 · kiểm PDF hợp lệ |
-| **Đặt tên file xuất** | `Mẫu 01A - NGUYỄN VĂN AN.pdf` · ký tự cấm · tên dành riêng · chống trùng |
+| **Đặt tên file xuất** | `Mẫu 01A - NGUYỄN VĂN AN.docx` · ký tự cấm · tên dành riêng · chống trùng |
 | **Toàn bộ 64 endpoint** | OpenAPI đầy đủ · test tích hợp cho mọi endpoint |
 | **JobRunner** | ⭐ Polling bảng `job` (không có `asyncio.Queue`) · bền qua crash · phục hồi job treo |
 
-**Mốc demo M3:** gọi API tuần tự bằng script → nhận file `Mẫu 01A - NGUYỄN VĂN AN.pdf` mở được, ⭐ số TK chứng khoán **in đậm**, ngày hợp đồng **trống**.
+**Mốc demo M3:** gọi API tuần tự bằng script → nhận file `Mẫu 01A - NGUYỄN VĂN AN.docx` mở được bằng Word, ⭐ số TK chứng khoán **in đậm**, ngày hợp đồng **trống**.
 
-**Rủi ro:** 🟠 ⭐ **LibreOffice thiếu font tiếng Việt → PDF sai layout.** Xử lý ngay đầu P3: đóng gói font metric-compatible và test với văn bản đầy đủ dấu.
+**Rủi ro:** ✅ ⭐ **Đã triệt tiêu ở D2.1** — rủi ro font tiếng Việt biến mất cùng LibreOffice. Đây là lý do #2 của quyết định §9.13.
 
 ---
 
@@ -183,13 +182,12 @@ gantt
 | ⭐ **Supervisor tiến trình** | Spawn backend · health probe 5s · restart tối đa 3 lần · kill sạch khi thoát |
 | **Local Handshake Token** | Sinh + truyền qua **biến môi trường** + tiêm vào SPA qua IPC |
 | **PostgreSQL portable** | `initdb` lần đầu · `pg_ctl start/stop` · cổng 55432 · ⭐ không cần quyền admin |
-| **LibreOffice portable** | Listener khởi động lười · hồ sơ riêng · ⭐ **font tiếng Việt** |
 | **Bootstrap lần đầu** | Migration + seed tự chạy · màn hình "Thiết lập lần đầu" + đặt mật khẩu backup |
 | ⭐ **Nạp model OCR ở luồng nền** | Dashboard hiện sau ~7 giây |
 
 **Mốc demo M5:** double-click `ContractSystem.exe` trên máy sạch → ~35 giây sau vào Dashboard, tạo được hợp đồng.
 
-**Rủi ro:** 🔴 ⭐ **Đây là giai đoạn nhiều bất ngờ nhất.** Vấn đề hay gặp: PostgreSQL từ chối `initdb` khi đường dẫn có tiếng Việt hoặc khoảng trắng; LibreOffice để lại tiến trình mồ côi; WebView2 chưa cài. → Dành sẵn **3 ngày đệm**.
+**Rủi ro:** 🔴 ⭐ **Đây là giai đoạn nhiều bất ngờ nhất.** Vấn đề hay gặp: PostgreSQL từ chối `initdb` khi đường dẫn có tiếng Việt hoặc khoảng trắng; WebView2 chưa cài. → Dành sẵn **3 ngày đệm**.
 
 ---
 
@@ -243,7 +241,7 @@ gantt
 | ⭐ MRZ không đạt 75% (không có charset whitelist) | Trung bình | 🔴 Hụt chỉ tiêu độ chính xác | Kiểm chứng ngay P2 tuần 2 · phương án B: model chuyên MRZ |
 | Không đủ ảnh CCCD để gán nhãn | Cao | 🔴 Không đo được độ chính xác | ⭐ Chuẩn bị Golden Set **từ P0**, song song |
 | PostgreSQL portable trên Windows | Trung bình | 🔴 Chặn P5 | ⭐ Spike ở **P1**, không đợi P5 |
-| LibreOffice thiếu font tiếng Việt | Cao | 🟠 PDF sai layout | Đóng gói font + test đầu P3 |
+| ~~LibreOffice thiếu font tiếng Việt~~ | — | ✅ **ĐÃ ĐÓNG (D2.1)** | Gỡ hẳn khâu xuất PDF (§9.13) |
 | NumPy 2.0 phá PaddleOCR | Trung bình | 🟠 Build hỏng | Ghim `<2.0` từ P0 + test kiểm phiên bản |
 | PyInstaller sót dữ liệu/DLL | Cao | 🟠 Chạy được ở dev, hỏng khi đóng gói | ⭐ **Build `.exe` từ P1**, không đợi P6 |
 | Kích thước gói > 1.5 GB | Trung bình | 🟡 Khó phân phối | Đo từ P1 · cân nhắc tách gói OCR model |
@@ -353,7 +351,7 @@ Bảng `document_type` đã chừa sẵn chỗ. Thêm một loại = thêm một
 | B3.2 | **Chữ ký số vào PDF** | Ký PAdES bằng USB Token. Hạ tầng sẵn: `contract_document.file_sha256` |
 | B3.3 | **Quét hàng loạt** | Đưa vào 20 cặp ảnh → OCR tuần tự → bảng kết quả duyệt nhanh → sinh hàng loạt |
 | B3.4 | **Máy scan hai mặt** | Tích hợp TWAIN/WIA — quét một lần ra cả 2 mặt, bỏ hẳn bước chọn file |
-| B3.5 | **In trực tiếp** | Gửi thẳng tới máy in mặc định, không qua bước mở PDF |
+| B3.5 | **In trực tiếp** | Gửi thẳng tới máy in mặc định, không qua bước mở Word |
 | B3.6 | **Nhắc CCCD sắp hết hạn** | Danh sách khách hàng có thẻ hết hạn trong 90 ngày |
 | B3.7 | **Mẫu email/SMS** | Sinh sẵn nội dung để nhân viên copy gửi khách *(không tự gửi — vi phạm P-01)* |
 

@@ -4,8 +4,12 @@
 tiêu chí nghiệm thu kiến trúc."*
 
 This module is that criterion, executable: it asserts all 18 ports exist and
-that each has a conforming fake. If someone adds a 19th port without a fake,
+that each has a conforming fake. Add a port without a fake and
 `test_all_18_ports_have_a_fake` fails.
+
+⭐ 18 ports numbered **1–19 with 13 missing**: D2.1 removed `IPdfConverter`
+(§9.13) and the numbering deliberately keeps the gap so existing §12.1x
+citations still point at the same modules.
 """
 from __future__ import annotations
 
@@ -19,6 +23,7 @@ from cocas.domain.ports import (
     IClock,
     ICryptoService,
     IDocumentRenderer,
+    IDocumentTypeSelector,
     IFieldExtractor,
     IFileStorage,
     IIdGenerator,
@@ -26,7 +31,6 @@ from cocas.domain.ports import (
     IJobQueue,
     IMrzReader,
     IOcrEngine,
-    IPdfConverter,
     IQrDecoder,
     IReadRepository,
     IRegionRecognizer,
@@ -37,11 +41,11 @@ from tests.fixtures.fake_ports import (
     FakeAliasRepository,
     FakeCardSideClassifier,
     FakeDocumentRenderer,
+    FakeDocumentTypeSelector,
     FakeFieldExtractor,
     FakeImagePreprocessor,
     FakeMrzReader,
     FakeOcrEngine,
-    FakePdfConverter,
     FakeQrDecoder,
     FakeUnitOfWork,
     FrozenClock,
@@ -50,7 +54,6 @@ from tests.fixtures.fake_ports import (
     InMemoryRepository,
     NullCryptoService,
     NullOcrEngine,
-    NullPdfConverter,
     SequentialIdGenerator,
 )
 
@@ -70,19 +73,20 @@ PORT_FAKES: list[tuple[int, type, object]] = [
     (10, IAliasRepository, FakeAliasRepository()),
     (11, IFileStorage, InMemoryFileStorage()),
     (12, IDocumentRenderer, FakeDocumentRenderer()),
-    (13, IPdfConverter, FakePdfConverter()),
     (14, IUnitOfWork, FakeUnitOfWork()),
     (15, IJobQueue, InMemoryJobQueue()),
     (16, IClock, FrozenClock(NOW)),
     (17, IIdGenerator, SequentialIdGenerator()),
     (18, ICryptoService, NullCryptoService()),
+    (19, IDocumentTypeSelector, FakeDocumentTypeSelector()),
 ]
 
 
 class TestPortConformance:
     def test_all_18_ports_have_a_fake(self) -> None:
         assert len(PORT_FAKES) == 18
-        assert [n for n, _, _ in PORT_FAKES] == list(range(1, 19))
+        # ⭐ 1–19 with 13 vacant (D2.1 removed IPdfConverter, §9.13).
+        assert [n for n, _, _ in PORT_FAKES] == [n for n in range(1, 20) if n != 13]
 
     @pytest.mark.parametrize(
         ("number", "port", "fake"),
@@ -95,7 +99,6 @@ class TestPortConformance:
     def test_null_implementations_also_conform(self) -> None:
         """P-08 degraded-mode stand-ins must satisfy the same contracts."""
         assert isinstance(NullOcrEngine(), IOcrEngine)
-        assert isinstance(NullPdfConverter(), IPdfConverter)
         assert isinstance(NullCryptoService(), ICryptoService)
 
     def test_ocr_engine_inherits_region_recognizer(self) -> None:

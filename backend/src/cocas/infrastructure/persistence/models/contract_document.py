@@ -1,4 +1,9 @@
-"""`contract_document` (§4.4.12) — at most 1 DOCX + 1 PDF per contract."""
+"""`contract_document` (§4.4.12) — ⭐ D2.1: at most 1 DOCX per contract.
+
+The `doc_type` column and its unique constraint stay: they are what stops a
+second document row being written for the same contract. `page_count` is
+gone — it only ever meant "pages of the PDF" (§9.13).
+"""
 from __future__ import annotations
 
 import uuid
@@ -10,7 +15,6 @@ from sqlalchemy import (
     ForeignKey,
     Integer,
     LargeBinary,
-    SmallInteger,
     String,
     UniqueConstraint,
 )
@@ -37,7 +41,6 @@ class ContractDocumentModel(UuidPkMixin, CreatedAtMixin, Base):
     file_path: Mapped[str] = mapped_column(String(300), nullable=False)
     file_sha256: Mapped[bytes] = mapped_column(LargeBinary(32), nullable=False)
     file_size_bytes: Mapped[int] = mapped_column(BigInteger, nullable=False)
-    page_count: Mapped[int | None] = mapped_column(SmallInteger, nullable=True)
     generator: Mapped[str] = mapped_column(String(60), nullable=False)
     generation_ms: Mapped[int] = mapped_column(Integer, nullable=False)
     download_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)

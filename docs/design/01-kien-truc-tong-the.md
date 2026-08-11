@@ -10,12 +10,12 @@
 |---|---|---|
 | **P-01** | **Offline-First / Air-Gap by Design** | Không chỉ "không gọi Internet" mà **không có khả năng** gọi. Backend chỉ bind `127.0.0.1`. Tauri CSP chặn toàn bộ `connect-src` trừ cổng sidecar. Font/icon/CSS nhúng cục bộ. Model OCR đóng gói kèm installer. Kiểm chứng bằng test chạy trên máy đã rút dây mạng |
 | **P-02** | **Dependency Rule (Clean Architecture)** | Phụ thuộc chỉ hướng vào trong: Presentation → Application → Domain. Infrastructure cắm vào Domain qua Port. Domain **không import** FastAPI, SQLAlchemy, PaddleOCR, docxtpl, `os`, `datetime.now()` |
-| **P-03** | **Replaceable Engines (Ports & Adapters)** | OCR, lưu trữ, render, chuyển PDF, hàng đợi đều là Port. Đổi engine = thêm 1 adapter + đổi 1 khoá cấu hình |
+| **P-03** | **Replaceable Engines (Ports & Adapters)** | OCR, lưu trữ, render, hàng đợi đều là Port. Đổi engine = thêm 1 adapter + đổi 1 khoá cấu hình |
 | **P-04** | **Extraction ≠ OCR** | Trích xuất là pipeline đa kênh: QR → MRZ → OCR → Fusion. OCR chỉ là 1 trong 3 nguồn |
 | **P-05** | **Data Minimization** | Ảnh CCCD là PII nhạy cảm nhất. Mặc định xoá ảnh gốc sau khi sinh hợp đồng thành công; chỉ giữ hash + thumbnail |
 | **P-06** | **Template-Driven, Zero-Code Extension** | Thêm mẫu hợp đồng = upload `.docx` + khai báo trong UI. Không sửa code, không rebuild, không khởi động lại |
 | **P-07** | **Everything is Logged** | Mọi thao tác chạm PII hoặc sinh tài liệu đều ghi `activity_log`. Mục đích: truy vết sự cố và tuân thủ NĐ 13/2023 |
-| **P-08** | **Fail Loud, Degrade Gracefully** | OCR chết → chuyển sang nhập tay hoàn toàn. LibreOffice chết → DOCX vẫn tải được. Không bao giờ mất dữ liệu người dùng đang nhập |
+| **P-08** | **Fail Loud, Degrade Gracefully** | OCR chết → chuyển sang nhập tay hoàn toàn. Không bao giờ mất dữ liệu người dùng đang nhập ⭐ *(D2.1: vế "LibreOffice chết → DOCX vẫn tải được" không còn đối tượng — chỉ có một đầu ra duy nhất)* |
 | **P-09** | **Deterministic & Reproducible** | Cùng input + cùng phiên bản template → cùng output. Mỗi hợp đồng lưu snapshot dữ liệu đã render |
 | **P-10** | **Radical Simplicity — Không xây cho quy mô không tồn tại** | Hệ thống phục vụ **một người, một máy**. Mọi cơ chế chỉ có ý nghĩa ở quy mô nhiều người đều bị cấm ở v1.0, kể cả khi "để sẵn cho tương lai" — vì P-02 và P-03 đã đảm bảo mở rộng được sau này mà không phải trả giá trước |
 | **P-11** | **Windows là lớp xác thực. Ứng dụng không dựng lại lớp đó** | Người dùng đã đăng nhập Windows để mở được máy. Bắt đăng nhập lần hai không tăng bảo mật, chỉ tạo thêm mật khẩu để quên. Định danh người thực hiện = tên tài khoản Windows |
@@ -35,7 +35,7 @@
 | **Nền tảng** | Windows 10/11 x64. Người dùng **có thể không có quyền Administrator** | Bắt buộc per-user install vào `%LOCALAPPDATA%`; PostgreSQL portable không đăng ký Service |
 | **Kỹ năng người dùng** | Nhân viên nghiệp vụ, không phải kỹ thuật viên | Không terminal, không sửa file config tay, một `.exe` duy nhất |
 | **Hiệu năng** | OCR CPU-only, 1 job tại một thời điểm | Queue chỉ để giữ UI không treo, không để scale |
-| **Kích thước gói** | Model OCR + LibreOffice + PostgreSQL | ~1.1 GB → installer nén LZMA |
+| **Kích thước gói** | ⭐ Model OCR + PostgreSQL *(D2.1 bỏ LibreOffice ~420 MB)* | ~700 MB → installer nén LZMA |
 | **Sao lưu** | Không có DBA, không có backup server | ⭐ Ứng dụng phải tự sao lưu ra file `.cocasbak` mã hoá |
 
 ### Giả định kỹ thuật đã chốt
@@ -58,7 +58,6 @@
 | NFR-01 | Độ chính xác trích xuất | ≥ 99% khi QR/MRZ đọc được; ≥ 95% field-level với OCR thuần | Golden Set 200 cặp ảnh gán nhãn |
 | NFR-02 | Thời gian OCR 1 mặt | p50 ≤ 2.0s · p95 ≤ 4.5s (CPU 4 nhân, ảnh 1600px) | Benchmark tự động |
 | NFR-03 | Thời gian sinh DOCX | p95 ≤ 800 ms | Benchmark |
-| NFR-04 | Thời gian sinh PDF | p95 ≤ 5s (listener ấm) · ≤ 15s (cold) | Benchmark |
 | **NFR-05** | **Khởi động ứng dụng** | **p50 ≤ 10s · p95 ≤ 15s** | Stopwatch tự động |
 | NFR-06 | Đáp ứng UI | Không thao tác nào khoá > 200 ms. Việc > 500 ms phải chạy nền có thanh tiến độ | React Profiler |
 | NFR-07 | Khả năng tự phục hồi | Tắt máy đột ngột → mở lại vẫn chạy, DB không hỏng, job dở dang đánh `FAILED`, form đang nhập được khôi phục | Chaos test `taskkill /F` |
@@ -113,7 +112,7 @@
 ║  └───┬──────────────┬───────────────┬──────────────────┬───────────────┘  ║
 ║      │              │               │                  │                  ║
 ║  ┌───▼────────┐ ┌───▼──────────┐ ┌──▼─────────────┐ ┌──▼───────────────┐ ║
-║  │ postgres.  │ │ soffice.bin  │ │ PaddleOCR      │ │ File Vault       │ ║
+║  │ postgres.  │ │              │ │ PaddleOCR      │ │ File Vault       │ ║
 ║  │ exe        │ │ --headless   │ │ models (đĩa)   │ │ AES-256-GCM      │ ║
 ║  │ portable   │ │ listener     │ │ det/rec/cls    │ │ tên file = UUID  │ ║
 ║  │ 127.0.0.1  │ │ KHỞI ĐỘNG    │ │ đóng gói kèm   │ │                  │ ║
@@ -135,16 +134,14 @@
 │   ├── ContractSystem.exe
 │   ├── cocas-backend\                   (PyInstaller onedir)
 │   ├── ocr-models\                      (det, rec, cls — chỉ đọc)
-│   ├── libreoffice\                     (portable + font tiếng Việt)
 │   └── postgres\                        (nhị phân — chỉ đọc)
 ├── data\                                ← ĐỌC-GHI · ⭐ ĐÂY LÀ THỨ CẦN SAO LƯU
 │   ├── pgdata\                          (cluster PostgreSQL)
 │   ├── vault\
 │   │   ├── images\{yyyy}\{mm}\{dd}\{uuid}.enc
-│   │   ├── contracts\{yyyy}\{mm}\{contract_id}\{...}.docx|.pdf
+│   │   ├── contracts\{yyyy}\{mm}\{contract_id}\{...}.docx
 │   │   └── thumbnails\{uuid}.enc
 │   ├── templates\{template_id}\v{n}\template.docx + manifest.json
-│   ├── lo-profile\                      (hồ sơ riêng của LibreOffice)
 │   ├── keys\master.key.dpapi            (KEK bọc bằng Windows DPAPI)
 │   ├── config\settings.toml             (người dùng sửa qua UI)
 │   ├── logs\app-{yyyy-MM-dd}.log        (xoay vòng, giữ 30 ngày)
@@ -181,7 +178,7 @@ Từ đây Tauri giám sát backend mỗi 5 giây. Backend chết → tự khở
 
 | Kịch bản | Hành vi thiết kế |
 |---|---|
-| **Tắt bình thường** | Tauri gửi `POST /admin/shutdown` → backend từ chối request mới, chờ job đang chạy tối đa 30s, đóng LibreOffice, đóng pool DB, thoát mã 0 → `pg_ctl stop -m fast` → xoá `runtime.json` |
+| **Tắt bình thường** | Tauri gửi `POST /admin/shutdown` → backend từ chối request mới, chờ job đang chạy tối đa 30s, đóng pool DB, thoát mã 0 → `pg_ctl stop -m fast` → xoá `runtime.json` |
 | **Còn job đang chạy** | Hộp thoại: "Đang xử lý OCR, đóng ngay sẽ huỷ. Đóng / Chờ hoàn tất?" |
 | **Backend crash** | Health probe phát hiện → khởi động lại → job `RUNNING` quá 5 phút bị đánh `FAILED` với `STALE_JOB_RECOVERED`, hiện ở "Công việc bị gián đoạn" trên Dashboard |
 | **Mất điện đột ngột** | PostgreSQL tự phục hồi bằng WAL. Backend chạy `RecoverStaleJobsUseCase`. File `.tmp` trong Vault bị dọn. Form đang nhập khôi phục từ `localStorage` |
@@ -208,7 +205,6 @@ Từ đây Tauri giám sát backend mỗi 5 giây. Backend chết → tự khở
 | Tauri + WebView2 | ~120 MB | ~150 MB | 200 MB |
 | Backend Python | ~280 MB | ~550 MB | 850 MB |
 | PostgreSQL | ~60 MB | ~90 MB | 150 MB |
-| LibreOffice | **0 MB** (lười) | 0 MB | 350 MB (khi convert) |
 | **Tổng RAM** | **~460 MB** | **~790 MB** | **~1.55 GB** |
 | CPU | ~0% | 60–90% (2–3 nhân) | 100% ngắn hạn |
 | Đĩa — cài đặt | 1.1 GB | | |
@@ -237,7 +233,6 @@ Từ đây Tauri giám sát backend mỗi 5 giây. Backend chết → tự khở
 | C-15 | Validation Engine | Domain | Rule nghiệp vụ + cú pháp | Pydantic v2 + rule objects |
 | C-16 | Template Registry | Application/Infra | Đăng ký, phiên bản, kiểm tra template | Jinja2 AST introspection |
 | C-17 | Document Renderer | Infrastructure | Bơm dữ liệu vào DOCX | docxtpl |
-| C-18 | PDF Converter | Infrastructure | DOCX → PDF, listener **lười** | LibreOffice headless |
 | C-19 | Repository Layer | Infrastructure | Truy cập CSDL | SQLAlchemy 2.0 async + Alembic |
 | C-20 | File Vault | Infrastructure | Lưu nhị phân, chống traversal, mã hoá | cryptography |
 | C-21 | **JobRunner** | Infrastructure | ⭐ Polling bảng `job` — **bảng `job` là hàng đợi duy nhất** | asyncio |
@@ -246,7 +241,7 @@ Từ đây Tauri giám sát backend mỗi 5 giây. Backend chết → tự khở
 | C-24 | Crypto Service | Infrastructure | AES-256-GCM, KEK qua DPAPI, HKDF | cryptography + pywin32 |
 | C-25 | Config Service | Infrastructure | default → TOML → env → DB | pydantic-settings + tomlkit |
 | C-26 | Logging | Cross-cutting | JSON có cấu trúc, che PII, xoay vòng | Loguru |
-| C-27 | Health & Diagnostics | Presentation | Kiểm tra DB / OCR / LibreOffice / đĩa | FastAPI |
+| C-27 | Health & Diagnostics | Presentation | Kiểm tra DB / OCR / đĩa | FastAPI |
 | C-28 | Installer & Bootstrap | Ops | Cài, initdb, migrate, seed, shortcut | NSIS |
 | C-29 | **Backup & Restore** | Application/Infra | Sao lưu DB + Vault ra 1 file mã hoá | `pg_dump` + zipfile + cryptography |
 
@@ -278,7 +273,7 @@ Từ đây Tauri giám sát backend mỗi 5 giây. Backend chết → tự khở
                     ┌──────────────────┴────────────────────┐
                     │      INFRASTRUCTURE LAYER             │
                     │  SQLAlchemy Repos · PaddleOCR Adapter │
-                    │  docxtpl · LibreOffice · FileVault    │
+                    │  docxtpl · FileVault                  │
                     │  Crypto · Loguru sink · JobRunner     │
                     └───────────────────────────────────────┘
 ```
@@ -290,8 +285,8 @@ Chứa toàn bộ tri thức nghiệp vụ độc lập công nghệ. Bỏ FastA
 - **Entities:** `Customer`, `Contract`, `ContractParty`, `ContractTemplate`, `TemplateVersion`, `OcrSession`, `BankAccount`
 - **Value Objects:** `CitizenId`, `VietnamesePhone`, `EmailAddress`, `BankAccountNumber`, `SecuritiesAccountNumber`, `IssuePlace`, `IdCardDates`, `PersonName`, `ConfidenceScore`, `StyledValue`
 - **Domain Services:** `IssuePlaceNormalizer`, `FieldFusionService`, `CardValidityPolicy`, `ContractNumberGenerator`, `ExportNameGenerator`
-- **Domain Events:** `OcrCompleted`, `CustomerCreated`, `ContractGenerated`, `ContractPdfRendered`, `ValidationFailed`
-- **Ports (18):** `IOcrEngine`, `IRegionRecognizer`, `IImagePreprocessor`, `ICardSideClassifier`, `IQrDecoder`, `IMrzReader`, `IFieldExtractor`, `IReadRepository<T>`, `IWriteRepository<T>`, `IFileStorage`, `IDocumentRenderer`, `IPdfConverter`, `IUnitOfWork`, `IJobQueue`, `IClock`, `IIdGenerator`, `ICryptoService`, `IAliasRepository`
+- **Domain Events:** `OcrCompleted`, `CustomerCreated`, `ContractGenerated`, `ValidationFailed`
+- ⭐ **Ports (18):** `IOcrEngine`, `IRegionRecognizer`, `IImagePreprocessor`, `ICardSideClassifier`, `IQrDecoder`, `IMrzReader`, `IFieldExtractor`, `IReadRepository<T>`, `IWriteRepository<T>`, `IFileStorage`, `IDocumentRenderer`, `IUnitOfWork`, `IJobQueue`, `IClock`, `IIdGenerator`, `ICryptoService`, `IAliasRepository`, `IDocumentTypeSelector` — *(D2.1 gỡ `IPdfConverter`; P3 thêm `IDocumentTypeSelector`. Số Port giữ 18, đánh số 1–19 khuyết 13 — §12.19)*
 - **Exceptions:** `InvalidCitizenIdError`, `CardExpiredError`, `TemplateVariableMismatchError`, `DuplicateCustomerError`, `PathTraversalError`, …
 
 **Không được chứa:** import framework, truy cập I/O, `datetime.now()` trực tiếp (dùng `IClock`), `uuid4()` trực tiếp (dùng `IIdGenerator`).
@@ -307,7 +302,7 @@ Mỗi Use Case là một kịch bản người dùng: một lớp, một phươn
 | Customer | `CreateCustomerUseCase` · `UpdateCustomerUseCase` · `SearchCustomerUseCase` · `GetCustomerUseCase` · `SoftDeleteCustomerUseCase` · `ListCustomerContractsUseCase` |
 | BankAccount | `AddBankAccountUseCase` · `UpdateBankAccountUseCase` · `DeleteBankAccountUseCase` · `SetPrimaryBankAccountUseCase` |
 | Template | `RegisterTemplateUseCase` · `ValidateTemplateUseCase` · `ListTemplatesUseCase` · `GetTemplateRequirementsUseCase` · `AddTemplateVersionUseCase` · `ActivateTemplateVersionUseCase` · `UpdateTemplateUseCase` · `DeactivateTemplateUseCase` · `PreviewTemplateUseCase` · `GetVariableDictionaryUseCase` |
-| Contract | `GenerateContractUseCase` · `RegenerateContractUseCase` · `RetryPdfUseCase` · `GetContractUseCase` · `ListContractsUseCase` · `DownloadDocumentUseCase` · `VoidContractUseCase` |
+| Contract | `GenerateContractUseCase` · `RegenerateContractUseCase` · `GetContractUseCase` · `ListContractsUseCase` · `DownloadDocumentUseCase` · `VoidContractUseCase` |
 | System | `GetHealthUseCase` · `GetDiagnosticsUseCase` · `GetSettingsUseCase` · `UpdateSettingUseCase` · `ResetSettingsUseCase` · `RecoverStaleJobsUseCase` · `RunRetentionPurgeUseCase` · `ListActivityLogUseCase` · `ExportActivityLogUseCase` |
 | Backup | `CreateBackupUseCase` · `ListBackupsUseCase` · `RestoreBackupUseCase` |
 | Reference | `ListBanksUseCase` · `ListProvincesUseCase` · `ListAliasesUseCase` · `AddAliasUseCase` · `DeleteAliasUseCase` |
@@ -316,7 +311,7 @@ Mỗi Use Case là một kịch bản người dùng: một lớp, một phươn
 
 ### 1.6.3. Infrastructure Layer
 
-Nơi duy nhất được biết PostgreSQL, PaddleOCR, LibreOffice tồn tại. Mỗi adapter phải: dịch ngoại lệ hạ tầng → ngoại lệ Domain; không chứa quy tắc nghiệp vụ; thay được bằng fake trong test.
+Nơi duy nhất được biết PostgreSQL và PaddleOCR tồn tại. Mỗi adapter phải: dịch ngoại lệ hạ tầng → ngoại lệ Domain; không chứa quy tắc nghiệp vụ; thay được bằng fake trong test.
 
 ### 1.6.4. Presentation Layer
 
@@ -330,7 +325,7 @@ Một **Composition Root** duy nhất (`container.py`) — file **duy nhất** i
 
 | Scope | Đối tượng | Lý do |
 |---|---|---|
-| **Singleton** | `IOcrEngine` (~150 MB) · `IPdfConverter` · `Settings` · `ICryptoService` · SQLAlchemy `Engine` · `IJobQueue` · `IQrDecoder` · `IMrzReader` · `IImagePreprocessor` | Khởi tạo tốn kém, không có trạng thái theo người dùng. ⭐ Ở kiến trúc một tiến trình, singleton thực sự là singleton |
+| **Singleton** | `IOcrEngine` (~150 MB) · `Settings` · `ICryptoService` · SQLAlchemy `Engine` · `IJobQueue` · `IQrDecoder` · `IMrzReader` · `IImagePreprocessor` | Khởi tạo tốn kém, không có trạng thái theo người dùng. ⭐ Ở kiến trúc một tiến trình, singleton thực sự là singleton |
 | **Scoped** | `IUnitOfWork` · mọi Repository · mọi Use Case · `ActivityLogService` | Gắn với một DB session và một `correlation_id` |
 | **Transient** | Value Object · DTO · Domain Service không trạng thái | Rẻ, bất biến |
 
@@ -339,7 +334,6 @@ Một **Composition Root** duy nhất (`container.py`) — file **duy nhất** i
 | Khoá cấu hình | Giá trị | Adapter |
 |---|---|---|
 | `ocr.engine` | `paddle` (mặc định) / `tesseract` / `none` | `PaddleOcrAdapter` / `TesseractAdapter` / `NullOcrAdapter` |
-| `document.pdf_converter` | `libreoffice` (mặc định) / `none` | `LibreOfficeConverter` / `NullConverter` |
 | `storage.encryption` | `aes_gcm` (mặc định) / `none` | `EncryptedFileVault` / `PlainFileVault` (chỉ dev) |
 
 ---
@@ -365,7 +359,7 @@ Một **Composition Root** duy nhất (`container.py`) — file **duy nhất** i
 | **ADR-02** | **PostgreSQL portable** trên chính máy | (a) yêu cầu công nghệ; (b) JSONB cho `render_snapshot`; (c) full-text search tiếng Việt; (d) WAL recovery mạnh khi mất điện; (e) đường nâng cấp lên server sau này | +250 MB gói cài; `initdb` ~20s lần đầu; cần supervisor tiến trình |
 | **ADR-03** | **PaddleOCR** engine mặc định | Tiếng Việt có dấu tốt; có sẵn det + rec + cls; chạy CPU ổn; model mobile ~10 MB | Cài `paddlepaddle` nặng; phải ghim phiên bản chặt |
 | **ADR-04** | **QR + MRZ là nguồn chính, OCR là phụ** | QR chứa dữ liệu số hoá 100% chính xác; MRZ có checksum tự kiểm | Phải xử lý QR mờ/che; pipeline phức tạp hơn |
-| **ADR-05** | **LibreOffice headless** cho PDF | Không cần license MS Office; giữ nguyên layout DOCX; chạy offline | Cold start ~10s → khắc phục bằng listener lười; ~420 MB |
+| **ADR-05** | 🗑️ ~~**LibreOffice headless** cho PDF~~ → ⭐ **ĐẢO NGƯỢC Ở D2.1: không xuất PDF, `.docx` là đầu ra duy nhất** | Người dùng cần sửa được hợp đồng trước khi in; bỏ luôn rủi ro font tiếng Việt; cắt ~420 MB gói cài + 1 tiến trình con | Muốn có PDF thì người dùng tự "Lưu thành PDF" trong Word — chấp nhận có chủ ý (§9.13) |
 | **ADR-06** | **Monolith một tiến trình, một event loop** | Không IPC, không serialize job, không tranh chấp model OCR, debug bằng một breakpoint | Job OCR nặng có thể làm chậm request khác → khắc phục bằng `run_in_executor` cho phần CPU-bound |
 | **ADR-07** | ⭐ **Bảng `job` LÀ hàng đợi duy nhất** | Không có `asyncio.Queue`. `JobRunner` polling `SELECT … FOR UPDATE SKIP LOCKED` mỗi 500 ms. Một nguồn chân lý, bền qua crash, hiển thị tiến độ, retry, ghi nhật ký | Độ trễ nhận job ≤ 500 ms — không đáng kể so với OCR 4s |
 | **ADR-08** | ~~JWT~~ → **Không có tầng xác thực ứng dụng** | Windows đã xác thực (P-11). Định danh = tên tài khoản Windows | Nếu cả phòng dùng chung một tài khoản Windows thì nhật ký không phân biệt được ai — mỗi người dùng tài khoản Windows riêng là thực hành chuẩn |

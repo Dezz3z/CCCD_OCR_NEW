@@ -22,16 +22,9 @@ MIN_VOID_REASON_LENGTH = 10
 _ALLOWED_TRANSITIONS: dict[ContractStatus, frozenset[ContractStatus]] = {
     ContractStatus.DRAFT: frozenset({ContractStatus.GENERATING}),
     ContractStatus.GENERATING: frozenset(
-        {ContractStatus.DOCX_READY, ContractStatus.GENERATION_FAILED}
-    ),
-    ContractStatus.DOCX_READY: frozenset(
-        {ContractStatus.PDF_CONVERTING, ContractStatus.COMPLETED}
-    ),
-    ContractStatus.PDF_CONVERTING: frozenset(
-        {ContractStatus.COMPLETED, ContractStatus.PDF_FAILED}
+        {ContractStatus.COMPLETED, ContractStatus.GENERATION_FAILED}
     ),
     ContractStatus.GENERATION_FAILED: frozenset({ContractStatus.GENERATING}),
-    ContractStatus.PDF_FAILED: frozenset({ContractStatus.PDF_CONVERTING}),
     ContractStatus.COMPLETED: frozenset(),
     ContractStatus.SUPERSEDED: frozenset(),
     ContractStatus.VOIDED: frozenset(),
@@ -98,14 +91,15 @@ class Contract:
     def mark_generating(self, now: datetime) -> None:
         self._transition(ContractStatus.GENERATING, now)
 
-    def mark_docx_ready(self, snapshot_sha256: bytes, now: datetime) -> None:
+    def mark_completed(self, snapshot_sha256: bytes, now: datetime) -> None:
+        """⭐ D2.1 — the single success transition.
+
+        `snapshot_sha256` is required here because the only thing that can
+        move a contract to `COMPLETED` is a `.docx` that was written, read
+        back and hashed. Before D2.1 this argument belonged to
+        `mark_docx_ready()`, an intermediate state that no longer exists.
+        """
         self.snapshot_sha256 = snapshot_sha256
-        self._transition(ContractStatus.DOCX_READY, now)
-
-    def mark_pdf_converting(self, now: datetime) -> None:
-        self._transition(ContractStatus.PDF_CONVERTING, now)
-
-    def mark_completed(self, now: datetime) -> None:
         self._transition(ContractStatus.COMPLETED, now)
         self.error_code = None
         self.error_message = None
@@ -114,11 +108,6 @@ class Contract:
         self.error_code = error_code
         self.error_message = error_message
         self._transition(ContractStatus.GENERATION_FAILED, now)
-
-    def mark_pdf_failed(self, error_code: str, error_message: str, now: datetime) -> None:
-        self.error_code = error_code
-        self.error_message = error_message
-        self._transition(ContractStatus.PDF_FAILED, now)
 
     def retry_generation(self, now: datetime) -> None:
         self._transition(ContractStatus.GENERATING, now)
