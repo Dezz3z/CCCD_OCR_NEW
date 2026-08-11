@@ -12,12 +12,15 @@ from pathlib import Path
 from sqlalchemy.ext.asyncio import AsyncEngine, async_sessionmaker, create_async_engine
 
 from cocas.application.pipelines.extraction_pipeline import ExtractionPipeline
+from cocas.application.render_context_builder import RenderContextBuilder
 from cocas.application.use_cases.ocr.process_ocr_session import ProcessOcrSessionUseCase
 from cocas.config.settings import Settings
 from cocas.domain.ports.crypto import ICryptoService
 from cocas.domain.ports.system import IClock, IIdGenerator
 from cocas.domain.services.field_normalizer import FieldNormalizer
 from cocas.domain.services.issue_place_normalizer import IssuePlaceNormalizer
+from cocas.infrastructure.documents.docx_context_adapter import DocxContextAdapter
+from cocas.infrastructure.documents.docx_renderer import DocxRenderer
 from cocas.infrastructure.documents.template_inspector import DocxTemplateInspector
 from cocas.infrastructure.logging.loguru_config import configure_logging
 from cocas.infrastructure.ocr.channels.mrz_reader import Td1MrzReader
@@ -108,6 +111,17 @@ class Container:
         # and — unlike the OCR engine — needs no warm-up, because it never
         # renders and so never loads anything.
         self.template_inspector = DocxTemplateInspector()
+
+        # ⭐ Port 12. A singleton **because** of its cache: preparing a
+        # template costs 6–9 s and every render after that costs ~0.4 s
+        # (§9.12.1). Rebuilding the renderer per request would pay the 6–9 s
+        # on every contract and quietly break NFR-03.
+        self.document_renderer = DocxRenderer()
+
+        # ⭐ Pure functions with no state; shared for the same reason
+        # `IssuePlaceNormalizer` is (§12.5).
+        self.render_context_builder = RenderContextBuilder()
+        self.docx_context_adapter = DocxContextAdapter()
 
     def unit_of_work(self) -> SqlAlchemyUnitOfWork:
         """A fresh `IUnitOfWork` per call — one transaction, one `async with` block (§12.14)."""

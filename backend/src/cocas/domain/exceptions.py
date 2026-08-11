@@ -152,6 +152,19 @@ class RenderError(DocumentGenerationError):
     code = "RENDER_ERROR"
 
 
+class DocumentIntegrityError(DocumentGenerationError):
+    """⭐ `COCAS-7009` — a document's bytes no longer hash to the recorded value.
+
+    Raised in two places for the same reason (§9.15): right after writing, when
+    the file is read back before `os.replace()`, and again on every download.
+    A contract is a legal record; handing back bytes that changed since they
+    were signed off is not a degradation we are willing to serve (P-08 allows
+    degrading, not lying).
+    """
+
+    code = "DOCUMENT_INTEGRITY_MISMATCH"
+
+
 # ============================================================================
 # Storage (§12.13 EncryptedFileVault)
 # ============================================================================

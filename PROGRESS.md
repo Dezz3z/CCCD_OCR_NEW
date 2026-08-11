@@ -12,7 +12,7 @@
 P0: Chuẩn bị        [====] ✅ DONE (2026-08-11)
 P1: Nền tảng        [====] ✅ DONE (2026-08-09)
 P2: OCR Module      [====] 🔄 MÃ NGUỒN XONG (4/4 tuần) — chờ Golden Set ⭐ Critical path
-P3: Nghiệp vụ       [==  ] 🔄 ĐANG LÀM — module 3/6 (TemplateInspector) xong 2026-08-11
+P3: Nghiệp vụ       [=== ] 🔄 ĐANG LÀM — module 4/6 (sinh DOCX) xong 2026-08-11
 P4: Giao diện       [    ] ⏳ TODO (3 tuần)
 P5: Desktop         [    ] ⏳ TODO (2 tuần)
 P6: Hoàn thiện      [    ] ⏳ TODO (2 tuần)
@@ -344,7 +344,7 @@ Thẻ được **ghép từ chính dữ liệu, không từ tên file**: mọi �
 | 1 | ⭐ **`ExtractionPipeline`** (Application §12.3) — biến 7 Port của P2 thành một lời gọi | ✅ **2026-08-11** |
 | 2 | ⭐ **Alias repository + Use Case OCR + nối `container.py`** | ✅ **2026-08-11** |
 | 3 | ⭐ **`TemplateInspector`** (Port 20, AST Jinja2, 10 mã chẩn đoán, chặn SSTI) | ✅ **2026-08-11** |
-| 4 | `RenderContextBuilder` + `DocxContextAdapter` + `DocxRenderer` + repo `Contract` (nợ từ P1) | ⏳ |
+| 4 | ⭐ **`RenderContextBuilder` + `DocxContextAdapter` + `DocxRenderer` + repo `Contract`** (nợ từ P1) | ✅ **2026-08-11** |
 | 5 | ~~`PdfConverter` + `LibreOfficeManager` + font tiếng Việt~~ | 🗑️ **ĐÃ GỠ (D2.1)** |
 | 6 | `JobRunner` (polling bảng `job`) | ⏳ |
 | 7 | ⭐ **62** endpoint + test tích hợp | ⏳ |
@@ -358,9 +358,13 @@ Thẻ được **ghép từ chính dữ liệu, không từ tên file**: mọi �
 - [x] ⭐ **D2.1 — gỡ toàn bộ khâu xuất PDF và LibreOffice** (migration `011`)
 - [x] ⭐ **Port 20 `ITemplateInspector` + `DocxTemplateInspector`** — 2 mẫu thật VALID, 12/12 payload SSTI bị chặn
 - [x] ⭐ **Từ điển 28 biến hệ thống** (§9.5 — sửa từ con số 25 sai trong tài liệu)
-- [ ] RenderContextBuilder + DocxContextAdapter
-- [ ] DOCX Renderer (2 mẫu thật, STK in đậm)
-- [ ] Đặt tên file xuất
+- [x] ⭐ **`RenderContextBuilder` + `DocxContextAdapter`** — 29 biến, `StyledValue` không bao giờ chạm `docxtpl` ở tầng Application
+- [x] ⭐ **DOCX Renderer (Port 12)** — 2 mẫu thật, **STK in đậm**, p95 332/618 ms, khớp `docxtpl` từng ký tự
+- [x] ⭐ **Bảng định dạng §9.7 đầy đủ 11 kiểu** (`value_formatter.py`, gồm đọc số tiền thành chữ tiếng Việt)
+- [x] ⭐ **Repo `Contract` + `ContractDocument`** — hết nợ P1, đủ 9/9 repository
+- [x] Đặt tên file xuất *(`ExportNameGenerator` đã có từ P1; module 4 chỉ dùng, không sửa)*
+- [ ] `GenerateContractUseCase` — xâu 4 mảnh trên thành một giao dịch (§9.11)
+- [ ] `IFileStorage` — Vault mã hoá cho ảnh và `.docx`
 - [ ] 62 endpoint
 - [ ] JobRunner (polling bảng job, không Queue)
 
@@ -486,8 +490,47 @@ Lần đầu tiên trong dự án **hai file `.docx` thật được đưa vào 
 - ⚠️ **`COCAS-6015` (>10 MB) chỉ được test bằng cách hạ ngưỡng** — chưa có file thật nào chạm mốc đó (hai mẫu: 872 KB và 577 KB).
 - ⚠️ **Mọi ca kiểm thử tổng hợp đều do `python-docx` sinh ra**, không phải Word. Hai mẫu thật *có* do Word lưu và marker `{{r … }}` trong đó vẫn đọc đúng, nên rủi ro này nhỏ hơn vẻ ngoài — và cách quét (xoá **mọi** thẻ XML) vốn miễn nhiễm với `w:proofErr`/`w:bookmarkStart` chèn giữa thẻ. Cái chưa có bằng chứng là một mẫu Word **có vòng lặp / có điều kiện**.
 
+#### ⭐ Module 4 — `RenderContextBuilder` + `DocxContextAdapter` + `DocxRenderer` + repo `Contract` (2026-08-11)
+
+**Lần đầu tiên hệ thống sinh ra một file `.docx` thật.** Hai mẫu thật vào, hai hợp đồng đã điền ra, số TK chứng khoán in đậm.
+
+| Chỉ số | `01A_HD_GDN` | `01A_HD_GDKQ` |
+|---|---|---|
+| Biến trong ngữ cảnh | 29 | 29 |
+| Chuẩn bị mẫu (một lần) | 4.0 s | 6.5 s |
+| ⭐ **Render mỗi hợp đồng** | p50 **291** · p95 **332** ms | p50 **324** · p95 **618** ms |
+| Ngân sách NFR-03 | p95 ≤ 800 ms — ✅ | ✅ |
+| ⭐ So với `docxtpl.render()` | **nhanh hơn 50 lần** | **nhanh hơn 57 lần** |
+| Văn bản `<w:t>` khớp `docxtpl` | ✅ 21 412 ký tự | ✅ 28 262 ký tự |
+| Tập run in đậm khớp `docxtpl` | ✅ | ✅ (có `008C123456`) |
+| Còn `{{` / in ra `None` / lộ `StyledValue` | không / không / không | không / không / không |
+
+Đo lại: `python backend/scripts/verify_docx_render.py "<thư mục .docx>"` *(thêm `--skip-reference` để bỏ phần đối chứng docxtpl, vốn tốn 15–37 s/mẫu)*.
+
+**Bốn phát hiện:**
+
+1. 🔴🔴 **Đi đúng đường thiết kế mô tả thì mất 14.4 s và 33.6 s cho một hợp đồng** — 18–42 lần ngân sách 800 ms. Chia pha ra thì thấy chỗ không ai đoán được: **`map_tree` chiếm 63%** — ba dòng `root.replace(body, tree)` dời cây lxml 57 000 phần tử sang mô hình đối tượng `python-docx`, chỉ để `save()` tuần tự hoá lại thứ ta **đã có sẵn dưới dạng chuỗi**. Và **thực thi template chỉ tốn 2 ms**: toàn bộ phần đắt là *chuẩn bị*, không phụ thuộc dữ liệu khách hàng. Hai sự thật đó cùng chỉ về một thiết kế: **hai pha `prepare` (có đệm) / `render`** (§9.12.1).
+   - ⭐ Hệ quả với tài liệu: **§9.17 tối ưu #1 không còn là "tối ưu"**. Bản D2.0 hứa "nhanh hơn ~40%"; đo thật là **40–90 lần**, và thiếu nó thì NFR-03 vỡ chứ không phải chậm hơn.
+2. ⚠️ **Nguyên nhân gốc là vệ sinh file mẫu, không phải thư viện.** `word/document.xml` nặng **2.0 MB** / **2.8 MB** cho **21 449** / **28 320** ký tự văn bản — tỉ lệ đánh dấu **94–100 lần**. Word đã băm văn bản thành 7 447 / 11 564 `w:r` (**≈2.9 ký tự mỗi run**) kèm 7 392 / 11 308 `w:proofErr` và 8 088 / 13 306 thuộc tính `w:rsid`. Đã thử gỡ `proofErr`+`rsid`: văn bản đầu ra **giống hệt** nhưng chỉ nhanh hơn **1.4 lần** — phần lớn khối lượng nằm ở `rPr` lặp trên từng run, muốn gỡ phải **gộp run**, tức sửa file của người dùng. Hoãn có chủ đích; thiết kế hai pha đã đủ.
+3. ⭐⭐ **Bẫy mẫu số, lần thứ tư — và lần này là bộ đo tự làm nhiễu chính nó.** Bản đầu của `verify_docx_render.py` đo timing xen kẽ với phần đối chứng `docxtpl`. Kết quả: **mẫu nào đo THỨ HAI thì trượt p95**, và giữa hai lần chạy giống hệt nhau thì mẫu trượt **đổi chỗ cho nhau** (lần 1: GDKQ p95 1462 ms trượt / GDN 585 ms đạt; lần 2: GDKQ 698 ms đạt / GDN 1813 ms trượt). Đo lại từng mẫu trong tiến trình sạch: **p95 463–634 ms, cả 4 lần đo đều đạt**. Nguyên nhân: một lượt render `docxtpl` 37 s cộng một lần chuẩn bị nguội vừa quần bộ nhớ trên máy 4 GB. Đã sửa bộ đo: **gom toàn bộ timing trước, đối chứng sau**, mỗi mẫu một `DocxRenderer` riêng.
+   - ⚠️ Kiểm chứng riêng rằng **đệm 2 mẫu cùng lúc KHÔNG phải nguyên nhân**: đo 4 tổ hợp (1 mẫu / 2 mẫu × 2 mẫu) trong 4 tiến trình sạch → p95 463 / 599 / 565 / 634 ms. Giữ 2 mẫu trong đệm tốn ~50–100 ms, không phải gấp ba.
+4. ⭐ **`{{r var }}` và bảng định dạng §9.7 không kiểm được bằng mắt.** `format_currency_text` (đọc số tiền thành chữ) phải tự viết vì không thư viện nào trong 38 thư viện đã ghim đọc được tiếng Việt; bốn ca bất quy tắc (`mốt`, `lăm`, `tư`, `linh`) là toàn bộ độ khó, và `1 000 005` → `một triệu không trăm linh năm đồng` chỉ đúng khi nhóm sau nhóm đầu **buộc phải đọc cả chữ số hàng trăm bằng 0**.
+
+**Bốn quyết định có chủ ý:**
+- **Vẫn giữ `fix_tables` + `fix_docpr_ids` của docxtpl** dù cả hai mẫu đều `has_loops = false` — 156 ms để một mẫu tương lai có `{% for %}` trong bảng không vỡ số cột.
+- **Bỏ timeout 10 s và giới hạn 1000 vòng lặp** (§9.12.2). Vòng lặp vô hạn cần iterable không giới hạn (ngữ cảnh chỉ có kiểu nguyên thuỷ) hoặc đệ quy (Port 20 từ chối **mọi** nút `Call`, kể cả macro tự gọi). Và timeout in-process không hiện thực đúng được: `concurrent.futures` hết giờ chỉ **bỏ chờ**, luồng vẫn quay 100% CPU vĩnh viễn — trên 4 nhân, tệ hơn triệu chứng nó chữa.
+- **Snapshot đi vào repo qua `stage_snapshot()`, không gắn lên entity `Contract`** — 20–40 KB chi tiết render mà mọi lời gọi `get()` phải giải mã, kể cả màn hình danh sách.
+- **Repo chặn `snapshot_sha256 = None` bằng `BusinessRuleViolation`, không để asyncpg ném.** `_base.add()` dịch **mọi** `IntegrityError` thành `DuplicateEntityError` "bản ghi đã tồn tại" — sai câu cho một dòng chưa từng được ghi.
+
+**Điểm mù còn lại của module 4:**
+- ⚠️ **Chưa có `GenerateContractUseCase`** — bốn mảnh đã chạy nhưng chưa ai xâu chúng lại thành một giao dịch (§9.11). Đó là module 7.
+- ⚠️ **Hai repo mới chưa chạy trên PostgreSQL thật** — cùng lý do cũ (cụm 55432 không chạy). `render_snapshot_enc` NOT NULL, AAD gắn theo `contract.id`, và `uq_contract_document__type` đều là thứ chỉ CSDL thật xác nhận được.
+- ⚠️ **Chưa có `IFileStorage`**, nên `DocxRenderer` ghi ra **đường dẫn trần**, chưa mã hoá vào Vault. §9.11 bước H đòi ghi bản mã; hiện mới có write-temp → verify → rename.
+- ⚠️ **Chưa có golden file** (§9.18). Phép đối chứng với `docxtpl` bắt được thay đổi *nội dung*, không bắt được thay đổi *bố cục* — và bố cục là thứ duy nhất người dùng nhìn thấy.
+
 **Risks:**
 - 🔴 **p95 12.4 s/cặp so với ngân sách 9 s.** Đòn bẩy 2 đã cắt từ ~15.4 s xuống 9.5 s trung bình; phần còn lại nằm trong **bản thân lượt quét**. Ba hướng chưa thử: hạ `target_long_edge`; bỏ lượt đọc dải tiêu đề của bộ phân loại mặt khi QR/MRZ đã quyết; bỏ lần giải mã QR trùng mà bộ phân loại mặt gọi thêm (~66 ms/ảnh, đã đo, **cố ý chưa làm** vì mọi cách lấy an toàn đều phức tạp hơn phần lợi).
+- ⚠️ **Hợp đồng ĐẦU TIÊN dùng một mẫu tốn 4–6.5 s** (pha chuẩn bị). Chấp nhận được, nhưng đừng đo p95 bằng lần chạy đầu, và cân nhắc làm ấm lúc khởi động ở P5.
   - ⚠️ Máy đích thật vẫn **chưa biết**, và p95 từng lệch 1.7 lần giữa hai lần chạy giống hệt nhau. Đừng chốt hay bác bỏ chỉ tiêu này bằng một lần chạy.
 - ✅ ~~🟠 LibreOffice thiếu font tiếng Việt~~ — **đóng 2026-08-11 (D2.1)**: gỡ hẳn khâu xuất PDF, rủi ro biến mất cùng thứ sinh ra nó
 

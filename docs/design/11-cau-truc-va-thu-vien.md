@@ -27,7 +27,8 @@ cocas/
 │   │   │   ├── enums/                #    ContractStatus · FieldKey · OcrSessionStatus
 │   │   │   ├── services/             #    IssuePlaceNormalizer · FieldFusionService
 │   │   │   │                         #    CardValidityPolicy · ContractNumberGenerator
-│   │   │   │                         #    ExportNameGenerator
+│   │   │   │                         #    ExportNameGenerator · template_variables
+│   │   │   │                         # ⭐ value_formatter — bảng định dạng §9.7
 │   │   │   ├── ports/                # ⭐ 19 interface — điểm thay thế mọi hạ tầng
 │   │   │   │                         #    (đánh số 1–20, khuyết 13)
 │   │   │   ├── events/               #    OcrCompleted · ContractGenerated · ...

@@ -34,14 +34,26 @@ class IDocumentRenderer(Protocol):
     """
 
     def render(
-        self, template_path: str, context: dict[str, object], output_path: str
+        self,
+        template_path: str,
+        context: dict[str, object],
+        output_path: str,
+        expected_sha256: bytes | None = None,
     ) -> RenderResult:
         """Render and return the result.
 
+        ⭐ `expected_sha256` is a **parameter**, not something the adapter can
+        look up: §12.11 makes "SHA-256 matches the CSDL" a precondition and
+        lists `TemplateChecksumMismatchError` among the raises, but
+        Infrastructure must not read the database to find the recorded value.
+        Without it the precondition is unchecked and the exception unreachable.
+
         Raises:
             TemplateNotFoundError: template file missing.
-            TemplateChecksumMismatchError: on-disk SHA-256 ≠ recorded value.
+            TemplateChecksumMismatchError: on-disk SHA-256 ≠ `expected_sha256`.
             RenderError: rendering failed.
             InsufficientStorageError: less than the required free space.
+            DocumentIntegrityError: the file read back does not match what
+                was written (`COCAS-7009`).
         """
         ...

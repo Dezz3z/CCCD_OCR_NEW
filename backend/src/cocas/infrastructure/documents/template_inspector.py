@@ -65,7 +65,7 @@ _MAIN_PART = "word/document.xml"
 _LARGE_FILE_BYTES = 10 * 1024 * 1024
 
 #: §9.9 measure #2 — the only filters the renderer's sandbox will accept.
-_ALLOWED_FILTERS = frozenset(
+ALLOWED_FILTERS = frozenset(
     {"upper", "lower", "title", "trim", "default", "length", "join", "replace", "first", "last"}
 )
 
@@ -451,7 +451,7 @@ def _rule_filter_whitelist(tree: JinjaTemplate) -> list[str]:
     return [
         f"bộ lọc '{node.name}' ngoài danh sách cho phép"
         for node in tree.find_all(nodes.Filter)
-        if node.name not in _ALLOWED_FILTERS
+        if node.name not in ALLOWED_FILTERS
     ]
 
 

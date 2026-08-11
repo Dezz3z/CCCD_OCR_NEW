@@ -286,7 +286,7 @@ Cách lấy: chèn `\n` trước mỗi `<w:p` trong nguồn đã vá (chính th�
 |---|---|
 | **Tầng** | ⭐ **Application** |
 | **Trách nhiệm** | Biến dữ liệu CSDL thành từ điển chỉ chứa kiểu nguyên thuỷ |
-| **Phương thức** | `build(contract_draft: ContractDraft, template: TemplateVersion) -> RenderContext` |
+| **Phương thức** | ⭐ `build(draft: ContractDraft, template: Template) -> RenderContext` · `missing_required_variables(context, version, template) -> list[str]` |
 | **8 bước** | Nạp bên → dựng cây → **làm phẳng nếu 1 bên** → biến hệ thống → biến bổ sung → định dạng theo kiểu → **bọc `StyledValue`** → **áp `suppressed_variables`** |
 | **Tiền điều kiện** | Mọi bên đã có chủ thể; KEK đã nạp được |
 | **Hậu điều kiện** | ⭐ Ngữ cảnh **chỉ chứa** `str`, `int`, `float`, `bool`, `list`, `dict`, `StyledValue`. **KHÔNG có đối tượng ORM, KHÔNG `Settings`, KHÔNG `docxtpl.RichText`, KHÔNG bất kỳ đối tượng nào có phương thức** |
@@ -294,6 +294,21 @@ Cách lấy: chèn `\n` trước mỗi `<w:p` trong nguồn đã vá (chính th�
 | **Bất biến** | Với mẫu 1 bên, cả `full_name` và `holder.full_name` đều tồn tại và bằng nhau |
 | **Bất biến** | Biến trong `template.suppressed_variables` luôn là chuỗi rỗng |
 | **Không được làm** | ❌ Import `docxtpl` · ❌ Đưa đối tượng có phương thức vào ngữ cảnh (**phòng thủ SSTI lớp cuối**) |
+
+### ⭐ 12.9.1. Vì sao chữ ký nhận `Template` **và** `TemplateVersion`
+
+Bản D2.0 viết `build(contract_draft, template: TemplateVersion)`. **Hai trong tám bước không thực hiện được với chữ ký đó:**
+
+| Bước | Cần | Cột đó nằm ở |
+|---|---|---|
+| 5 — biến bổ sung | `contract_fields` | `contract_template` (§4.4.8) |
+| 8 — áp `suppressed_variables` | `suppressed_variables` | `contract_template` (§4.4.8) |
+
+`template_version` (§4.4.9) chỉ mang **file và kết quả quét file** (`declared/required/optional/unknown/richtext_variables`, `has_loops`, `has_conditionals`). Nó không biết mẫu **khai báo** gì — đó là thuộc tính của mẫu, không của lần tải file lên.
+
+⭐ **Nên `build()` nhận `Template`, còn `TemplateVersion` đi vào phương thức thứ hai.** Phép so `required_variables` để sinh `COCAS-7002` (§9.8) chạy **sau** khi ngữ cảnh đã dựng xong — nó là một câu hỏi về *kết quả*, không phải một bước dựng. Nhét `version` vào `build()` chỉ để nó có mặt sẽ tạo một tham số không đọc tới.
+
+⚠️ **`missing_required_variables` phải bỏ qua biến nằm trong `suppressed_variables`.** Với hai mẫu thật, `contract_date` vừa **bắt buộc** vừa **bị tắt** — để trống cho người dùng viết tay là yêu cầu nghiệp vụ (§9.8). Không trừ ra thì mọi hợp đồng đều bị `COCAS-7002` chặn.
 
 ---
 
@@ -316,14 +331,27 @@ Cách lấy: chèn `\n` trước mỗi `<w:p` trong nguồn đã vá (chính th�
 | Mục | Nội dung |
 |---|---|
 | **Tầng** | Infrastructure |
-| **Phương thức** | `render(template_path: Path, context: dict, output_path: Path) -> RenderResult` |
+| **Phương thức** | ⭐ `render(template_path: str, context: dict, output_path: str, expected_sha256: bytes \| None = None) -> RenderResult` |
 | **Tiền điều kiện** | File mẫu tồn tại · SHA-256 khớp CSDL · thư mục đích ghi được · còn ≥ 100 MB đĩa |
 | **Hậu điều kiện** | File tại `output_path` tồn tại, mở được bằng `python-docx`, SHA-256 khớp `RenderResult.sha256` |
 | **Bất biến** | ⭐ Mẫu *write-temp → verify → rename*. **Không bao giờ tồn tại file `.docx` dở dang ở đường dẫn đích** |
-| **Môi trường Jinja2** | ⭐ `SandboxedEnvironment` · danh sách trắng 10 bộ lọc · `undefined` trả chuỗi rỗng · timeout 10s · giới hạn 1000 vòng lặp |
-| **Ném ra** | `TemplateNotFoundError` · `TemplateChecksumMismatchError` · `RenderError` · `InsufficientStorageError` |
+| **Môi trường Jinja2** | ⭐ `SandboxedEnvironment` · danh sách trắng 10 bộ lọc · `undefined` trả chuỗi rỗng · *(xem §9.12.2 về timeout)* |
+| **Ném ra** | `TemplateNotFoundError` · `TemplateChecksumMismatchError` · `RenderError` · `InsufficientStorageError` · ⭐ `DocumentIntegrityError` |
 | **Luồng** | ⭐ Chạy trong `run_in_executor` — CPU-bound, không chặn event loop |
 | **Đầu ra** | `RenderResult{ output_path, sha256, size_bytes, duration_ms }` |
+
+> ⭐ **`expected_sha256` là tham số, không phải thứ bộ render tự tra được.** §12.11 bản D2.0 vừa đặt "SHA-256 khớp CSDL" làm tiền điều kiện vừa liệt kê `TemplateChecksumMismatchError` trong danh sách ném ra — nhưng chữ ký `render(template_path, context, output_path)` không có chỗ nào nhận giá trị đối chiếu, và Infrastructure **không được** tự đọc CSDL để lấy. Không thêm tham số thì tiền điều kiện đó không ai kiểm và ngoại lệ đó không bao giờ ném.
+
+### ⭐ 12.11.1. Hai pha: `prepare` (một lần / mẫu) và `render` (mỗi hợp đồng)
+
+Xem §9.12.1 để biết số đo và lý do. Tóm tắt hợp đồng của lớp:
+
+| | Phụ thuộc | Chi phí đo được | Bộ nhớ đệm |
+|---|---|---|---|
+| `prepare` | **chỉ file mẫu** | 5.5–8.9 s | ⭐ khoá `(đường dẫn, sha256)`, giữ trong tiến trình |
+| `render` | mẫu đã `prepare` + ngữ cảnh | **0.31–0.64 s** | không |
+
+⚠️ **Khoá đệm phải gồm SHA-256, không chỉ đường dẫn.** Đăng ký một phiên bản mẫu mới ghi ra file khác nên đường dẫn khác — nhưng khôi phục sao lưu, sửa file tại chỗ hoặc hỏng đĩa thì **đường dẫn giữ nguyên còn nội dung đổi**. Đệm theo đường dẫn sẽ render bản cũ, im lặng, cho tới khi khởi động lại tiến trình.
 
 ---
 
@@ -490,7 +518,7 @@ Cách lấy: chèn `\n` trước mỗi `<w:p` trong nguồn đã vá (chính th�
 | 9 | `IWriteRepository<T>` | Infrastructure | `SqlAlchemy*WriteRepository` |
 | 10 | `IAliasRepository` | Infrastructure | `SqlAlchemyAliasRepository` (có cache) |
 | 11 | `IFileStorage` | Infrastructure | `EncryptedFileVault` · `PlainFileVault` (dev) |
-| 12 | `IDocumentRenderer` | Infrastructure | `DocxRenderer` |
+| 12 | `IDocumentRenderer` | Infrastructure | `DocxRenderer` ⭐ *(hai pha, có đệm — §9.12.1)* |
 | ~~13~~ | 🗑️ ~~`IPdfConverter`~~ | — | **Đã gỡ ở D2.1** (§12.12) — số thứ tự để khuyết có chủ ý |
 | 14 | `IUnitOfWork` | Infrastructure | `SqlAlchemyUnitOfWork` |
 | 15 | `IJobQueue` | Infrastructure | `JobRunner` (polling bảng `job`) |

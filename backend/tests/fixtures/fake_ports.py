@@ -421,11 +421,17 @@ class FakeDocumentRenderer:
 
     def __init__(self) -> None:
         self.calls: list[tuple[str, dict[str, object], str]] = []
+        self.expected_hashes: list[bytes | None] = []
 
     def render(
-        self, template_path: str, context: dict[str, object], output_path: str
+        self,
+        template_path: str,
+        context: dict[str, object],
+        output_path: str,
+        expected_sha256: bytes | None = None,
     ) -> RenderResult:
         self.calls.append((template_path, context, output_path))
+        self.expected_hashes.append(expected_sha256)
         payload = repr(sorted(context.items())).encode()
         return RenderResult(
             output_path=output_path,

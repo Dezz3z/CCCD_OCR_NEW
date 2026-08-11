@@ -357,16 +357,74 @@ graph TB
 
 | Mục | Thiết kế |
 |---|---|
-| Thư viện | `docxtpl` (bọc `python-docx` + Jinja2) |
+| Thư viện | `docxtpl` (bọc `python-docx` + Jinja2) — ⭐ dùng `patch_xml` / `fix_tables` / `fix_docpr_ids` / `RichText`, **không** dùng `render()`/`save()`; xem §9.12.1 |
 | Môi trường Jinja2 | ⭐ `SandboxedEnvironment` + danh sách trắng 10 bộ lọc (§9.9) |
 | `undefined` | Lớp tuỳ chỉnh trả chuỗi rỗng, ghi log DEBUG tên biến thiếu |
 | Rich text | `DocxContextAdapter` chuyển `StyledValue` → `RichText`; template dùng cú pháp `{{r var }}` |
 | Toàn vẹn nguồn | Kiểm SHA-256 file mẫu **trước** khi mở |
 | Ghi file | ⭐ Mẫu *write-temp → verify → rename*: ghi `.tmp` → đọc lại → so hash → `os.replace()` (nguyên tử trên NTFS) |
 | Mã hoá | File trong Vault mã hoá AES-256-GCM; giải mã khi tải xuống |
-| Timeout | 10 giây (render thực tế < 1 giây; timeout chỉ để bắt vòng lặp vô hạn) |
-| Hiệu năng mục tiêu | p95 ≤ 800 ms (NFR-03) |
+| Timeout | ⭐ Không hiện thực trong tiến trình — xem §9.12.2 |
+| Hiệu năng mục tiêu | p95 ≤ 800 ms (NFR-03) — ⭐ đạt **chỉ khi** có bộ nhớ đệm §9.12.1 |
 | Luồng | ⭐ Chạy trong `run_in_executor` — CPU-bound, không chặn event loop |
+
+### ⭐ 9.12.1. Không gọi `DocxTemplate.render()` — đo trên 2 mẫu thật (2026-08-11)
+
+🔴 **Gọi thẳng `docxtpl.DocxTemplate.render()` rồi `save()` mất 14.4 s (`01A_HD_GDN`) và 33.6 s (`01A_HD_GDKQ`)** trên máy 4 nhân / 4 GB — **18–42 lần** ngân sách 800 ms của NFR-03. Đây không phải máy chậm: chia nhỏ từng pha cho thấy chi phí nằm ở một chỗ không ai đoán được.
+
+| Pha của `render()` (`01A_HD_GDN`) | Thời gian | Phụ thuộc ngữ cảnh? |
+|---|---|---|
+| `get_xml` + `patch_xml` | 4 258 ms | ❌ chỉ phụ thuộc file mẫu |
+| `render_xml_part` (biên dịch Jinja + thực thi) | 899 ms | biên dịch ❌ · **thực thi 2 ms** ✅ |
+| `fix_tables` | 143 ms | ✅ |
+| `fix_docpr_ids` | 13 ms | ✅ |
+| 🔴 **`map_tree`** (ghép cây lxml vào `python-docx`) | **9 374 ms** | ✅ |
+| header + footer (2 part) | 9 ms | ✅ |
+| `render_properties` | 5 ms | ✅ |
+| `save` | 200 ms | ✅ |
+
+⭐ **Hai điều bất ngờ:**
+1. **Thực thi template chỉ tốn 2 ms.** Toàn bộ phần đắt là *chuẩn bị* — và nó không phụ thuộc dữ liệu khách hàng chút nào.
+2. 🔴 **`map_tree` — ba dòng `root.replace(body, tree)` — chiếm 63% tổng thời gian.** Đó là thao tác lxml dời một cây ~57 000 phần tử sang tài liệu khác. Nó tồn tại chỉ để `docxtpl` trả kết quả về **mô hình đối tượng `python-docx`** rồi `save()` tuần tự hoá lại — một vòng đi-về mà ta không cần: ta đã có XML sau render dưới dạng chuỗi.
+
+**Thiết kế thay thế — hai pha:**
+
+| Pha | Làm gì | Khi nào |
+|---|---|---|
+| `prepare(template)` | Đọc zip → với mỗi part `word/{document,header*,footer*,footnotes,endnotes}.xml`: `patch_xml` → `jinja_env.from_string` → giữ đối tượng đã biên dịch | ⭐ **Một lần cho mỗi `(đường dẫn, sha256)`**, giữ trong bộ nhớ tiến trình |
+| `render(context)` | Thực thi từng part đã biên dịch → `fix_tables` + `fix_docpr_ids` cho `word/document.xml` → **ghi lại file zip**, sao chép nguyên si mọi part khác | Mỗi hợp đồng |
+
+| Đo lại sau khi đổi | `01A_HD_GDN` | `01A_HD_GDKQ` |
+|---|---|---|
+| `prepare` (một lần / mẫu) | 6.1 s | 8.9 s |
+| ⭐ **`render` (mỗi hợp đồng)** | **313 / 440 / 372 ms** | **641 / 361 / 387 ms** |
+| Toàn bộ văn bản `<w:t>` khớp đầu ra của `docxtpl` | ✅ 21 412 ký tự | ✅ 28 262 ký tự |
+| Tập `run` in đậm khớp đầu ra của `docxtpl` | ✅ | ✅ (có `008C123456`) |
+
+> ⭐ **Vì thế §9.17 tối ưu #1 không còn là "tối ưu".** Không có bộ nhớ đệm thì mỗi hợp đồng trả giá 6–9 s pha chuẩn bị và NFR-03 vỡ. Đệm là **một phần của thiết kế**, không phải việc để dành.
+
+⚠️ **Cái mất khi bỏ `render()`/`save()`:**
+
+| Mất | Ảnh hưởng v1.0 |
+|---|---|
+| `render_properties` — Jinja trong `docProps/core.xml` | Không. Cả 2 mẫu không đặt biến vào thuộc tính tài liệu |
+| `InlineImage` / `SubDoc` | Không. Cả hai cần mô hình đối tượng `python-docx`; §9.5 không có biến kiểu ảnh |
+| `replace_pic` / `replace_media` | Không. Không có tính năng thay ảnh trong v1.0 |
+
+⚠️ **Vẫn giữ `fix_tables` + `fix_docpr_ids`** dù cả 2 mẫu thật đều `has_loops = false`: chúng chỉ tốn 156 ms và là thứ duy nhất giữ cho một mẫu **tương lai** có `{% for %}` trong bảng không vỡ số cột. Bỏ chúng là tiết kiệm 1% để đổi lấy một lỗi chỉ xuất hiện ở mẫu thứ ba.
+
+⚠️ **Nguyên nhân gốc là VỆ SINH FILE MẪU, không phải thư viện.** `word/document.xml` của hai mẫu nặng **2.0 MB** và **2.8 MB** cho **21 449** và **28 320** ký tự văn bản — tỉ lệ đánh dấu/nội dung **94–100 lần**. Word đã băm văn bản thành **7 447** / **11 564** `w:r` (≈ 2.9 ký tự mỗi `run`) kèm **7 392** / **11 308** thẻ `w:proofErr` và **8 088** / **13 306** thuộc tính `w:rsid`. Đã thử gỡ `proofErr`/`rsid` — văn bản đầu ra **giống hệt** nhưng chỉ nhanh hơn **1.4 lần** (14.5 s → 10.5 s): phần lớn khối lượng nằm ở `rPr` lặp trên từng `run`, muốn gỡ phải **gộp run**, tức là sửa nội dung file mẫu. **Hoãn có chủ đích** — thiết kế hai pha đã đưa số đo vào ngân sách mà không đụng vào file của người dùng.
+
+### ⭐ 9.12.2. Vì sao không có timeout 10 giây
+
+Bản D2.0 ghi "timeout 10 s + giới hạn 1000 vòng lặp, chỉ để bắt vòng lặp vô hạn". Cả hai đều **không hiện thực** ở v1.0, và đó là quyết định chứ không phải thiếu sót:
+
+| | Lý do |
+|---|---|
+| **Không có đường sinh vòng lặp vô hạn** | Vòng lặp vô hạn cần (a) một iterable không giới hạn hoặc (b) đệ quy. (a) không tồn tại: ngữ cảnh chỉ chứa kiểu nguyên thuỷ, §9.5 không có biến nào là danh sách. (b) cần một lời gọi — mà **`TemplateInspector` từ chối MỌI nút `Call`** lúc đăng ký (§9.9.1 luật 3, `COCAS-6014`), kể cả `{% macro %}` tự gọi chính nó |
+| **Timeout không hiện thực được đúng** | Mã Python CPU-bound trong tiến trình không dừng được từ bên ngoài. `concurrent.futures` hết giờ chỉ **bỏ chờ**; luồng vẫn quay 100% CPU vĩnh viễn. Trên máy 4 nhân, một luồng rò là tệ hơn triệu chứng nó chữa |
+
+> ⭐ **Cổng chặn thật nằm ở lúc đăng ký mẫu, không phải lúc render.** Đây cũng là lý do §9.9.1 quét hình dạng AST thay vì tin vào sandbox: một mẫu đã qua `TemplateInspector` thì không còn cấu trúc nào để hết giờ.
 
 ---
 
@@ -489,8 +547,11 @@ graph TB
 
 > ⭐ **D2.1: đây giờ cũng là tổng thời gian đến khi hợp đồng `COMPLETED`.** Trước khi gỡ PDF, người dùng nhận `201` sau ~870 ms nhưng phải chờ thêm 2.1–4.5 s (listener ấm) hoặc 11–15 s (cold start) mới có bản in. NFR-04 vì thế không còn đối tượng để áp.
 
+> 🔴 **Bảng trên là ước tính của bản D2.0 và đã sai với mẫu thật.** Đo 2026-08-11: render `01A_HD_GDN` mất **313–440 ms**, `01A_HD_GDKQ` **361–641 ms** — vẫn trong ngân sách, nhưng **chỉ vì** thiết kế hai pha ở §9.12.1. Làm đúng như bản D2.0 mô tả (`DocxTemplate.render()`) thì con số là **14.4 s** và **33.6 s**.
+
 **Tối ưu còn lại trong thiết kế:**
-1. **Cache đối tượng template đã phân tích** trong bộ nhớ theo `(template_version_id, sha256)` — lần render thứ hai của cùng mẫu nhanh hơn ~40%.
+1. ⭐ ~~Tối ưu~~ → **BẮT BUỘC: đệm mẫu đã `prepare` theo `(đường dẫn, sha256)`** (§9.12.1). Không phải "nhanh hơn 40%" mà là **40–90 lần**; thiếu nó thì NFR-03 vỡ.
+   - ⚠️ Hệ quả cần biết: hợp đồng **đầu tiên** dùng một mẫu sau khi khởi động tiến trình trả giá 6–9 s pha chuẩn bị. Làm ấm lúc khởi động (P5) hoặc chấp nhận — nhưng đừng đo p95 bằng lần chạy đầu.
 2. ⭐ **Render chạy trong `run_in_executor`** — CPU-bound, không chặn event loop của Uvicorn 1 worker.
 
 ---
@@ -501,7 +562,8 @@ graph TB
 |---|---|
 | **Unit** | Bộ dựng ngữ cảnh: mỗi kiểu dữ liệu · giá trị `None` · `suppressed_variables` · `StyledValue` |
 | **Unit** | Đặt tên file: ký tự cấm · tên dành riêng · quá dài · trùng tên · dấu tiếng Việt |
-| **Integration** | Render 2 mẫu thật → mở lại bằng `python-docx`, kiểm tra: đủ 12/10 biến đã thay · ⭐ **run chứa STK chứng khoán có thuộc tính `bold = True`** · các biến suppressed là chuỗi rỗng |
+| **Integration** | Render 2 mẫu thật → mở lại, kiểm tra: đủ ⭐ **12 / 9** biến đã thay *(đo 2026-08-11; bản D2.0 ghi "12/10" — `01A_HD_GDKQ` khai 9 biến, không phải 10)* · ⭐ **run chứa STK chứng khoán có thuộc tính `bold = True`** · các biến suppressed là chuỗi rỗng |
+| ⭐ **Integration** | **Đối chứng với chính `docxtpl`**: `render()` của thư viện và bộ render hai pha (§9.12.1) phải cho **cùng chuỗi `<w:t>` nối liền** và **cùng tập run in đậm**. Đây là thứ duy nhất chứng minh việc bỏ `map_tree`/`save()` không đổi tài liệu. ⚠️ **Đừng so bằng `python-docx .paragraphs`** — nó bỏ hết nội dung trong bảng (đo: 45 ký tự thay vì 21 412) và **lặp lại ô đã gộp** (đo: 200 110 ký tự cho cùng tài liệu đó) |
 | **Integration** | ⭐ Mở lại `.docx` đã sinh bằng `python-docx`, ghép toàn bộ text → kiểm chứa họ tên, số CCCD, STK CK *(thay cho phép trích văn bản từ PDF trước D2.1)* |
 | ⭐ **Golden file** | So sánh output với file kỳ vọng đã duyệt bằng mắt. Bất kỳ thay đổi layout nào cũng làm test đỏ → buộc xem xét có chủ ý |
 | **Chaos** | ⭐ Kill tiến trình backend giữa lúc render → không được để lại `.tmp` nào ở vị trí `.docx` cuối cùng, hợp đồng ở `GENERATING` phải được job phục hồi đánh `GENERATION_FAILED` và sinh lại được |

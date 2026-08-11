@@ -165,6 +165,12 @@ Mọi dòng code phải tuân thủ. Vi phạm = phải sửa, không phải tra
 | 2026-08-11 | ⭐ §9.9 biện pháp #3: blacklist chuỗi **chỉ quét thân thẻ Jinja2**. Quét XML thô như bản cũ từ chối **mọi** `.docx` vì `openxmlformats.org` chứa `open` — đo trên 2 mẫu thật ([§9.9.1](09-template-va-tai-lieu.md)) |
 | 2026-08-11 | ⭐ §9.5 từ điển biến: **25 → 28 biến** (đếm lại từng dòng; dòng `day/month/year` khai 3 biến) |
 | 2026-08-11 | ⭐ `COCAS-6003` báo **số thứ tự đoạn văn**, không phải "số dòng" — `.docx` không có dòng ([§12.8.3](12-dac-ta-module.md)) |
+| 2026-08-11 | 🔴 **`DocxRenderer` không gọi `DocxTemplate.render()`.** Đo mẫu thật: 14.4 s và 33.6 s so với ngân sách 800 ms; 63% nằm ở `map_tree`. Thay bằng **hai pha `prepare`/`render` có đệm** — đo lại p95 **332–618 ms** ([§9.12.1](09-template-va-tai-lieu.md)) |
+| 2026-08-11 | ⭐ §9.17 tối ưu #1 (đệm mẫu) chuyển từ "tối ưu" thành **bắt buộc** — thiếu nó thì NFR-03 vỡ |
+| 2026-08-11 | ⭐ `IDocumentRenderer.render()` thêm tham số `expected_sha256` — không có nó thì tiền điều kiện "SHA-256 khớp CSDL" không ai kiểm được ([§12.11](12-dac-ta-module.md)) |
+| 2026-08-11 | ⭐ `RenderContextBuilder.build()` nhận `Template` (không phải `TemplateVersion`) — `suppressed_variables` và `contract_fields` là cột của `contract_template` ([§12.9.1](12-dac-ta-module.md)) |
+| 2026-08-11 | ⭐ §9.12 **bỏ timeout 10 s và giới hạn 1000 vòng lặp** — chúng canh một đường mà Port 20 đã đóng lúc đăng ký, và timeout in-process không hiện thực đúng được ([§9.12.2](09-template-va-tai-lieu.md)) |
+| 2026-08-11 | ⭐ §9.18 "12/10 biến" → **12/9** — `01A_HD_GDKQ` khai 9 biến |
 
 ### Tóm tắt kết quả D2.0
 
