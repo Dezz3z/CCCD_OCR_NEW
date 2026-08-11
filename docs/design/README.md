@@ -133,12 +133,12 @@ Mọi dòng code phải tuân thủ. Vi phạm = phải sửa, không phải tra
 | | Số lượng |
 |---|---|
 | Bảng CSDL | **19** |
-| Endpoint API | **64** |
+| Endpoint API | ⭐ **62** *(D2.1: −2 endpoint PDF)* |
 | Wireframe | **8** |
 | Quy tắc validation | **56** |
-| Port (interface) | **19** ⭐ (`IDocumentTypeSelector` thêm ở P3 — §12.19.1) |
+| Port (interface) | ⭐ **19** *(đánh số 1–20, **khuyết 13**)* — `IDocumentTypeSelector` §12.19.1 và `ITemplateInspector` §12.19.2 thêm ở P3; `IPdfConverter` gỡ ở D2.1 |
 | Use Case | **41** |
-| Thư viện Python | **39** |
+| Thư viện Python | **38** *(D2.1 bỏ `pypdf`)* |
 | Ước tính công | **12.5 tuần** (2 người) |
 
 ---
@@ -156,6 +156,15 @@ Mọi dòng code phải tuân thủ. Vi phạm = phải sửa, không phải tra
 | D1.6 | **Bỏ toàn bộ xác thực** — không mật khẩu, không JWT, không phân quyền |
 | D2.0 | **Architecture Review** — sửa 7 lỗi, 6 cải thiện, cắt 5 mục, cắt một phần 3 mục |
 | **D2.1** | ⭐ **Gỡ toàn bộ khâu xuất PDF và LibreOffice** — đầu ra duy nhất là `.docx`. Đảo ngược ADR-05. Kéo theo: 19→18 Port · 64→62 endpoint · ContractStatus 9→6 · JobType 6→5 · DocType 2→1 · 28→25 khoá cấu hình · đóng rủi ro font tiếng Việt. Lý do đầy đủ: [§9.13](09-template-va-tai-lieu.md) |
+
+**Sửa trong lúc triển khai** *(không đổi số bản — chỉ chỉnh cho khớp thứ đo được)*
+
+| Ngày | Nội dung |
+|---|---|
+| 2026-08-11 | ⭐ **Port 20 `ITemplateInspector`** (§12.19.2) — 18→**19 Port**, đánh số 1–20 khuyết 13 |
+| 2026-08-11 | ⭐ §9.9 biện pháp #3: blacklist chuỗi **chỉ quét thân thẻ Jinja2**. Quét XML thô như bản cũ từ chối **mọi** `.docx` vì `openxmlformats.org` chứa `open` — đo trên 2 mẫu thật ([§9.9.1](09-template-va-tai-lieu.md)) |
+| 2026-08-11 | ⭐ §9.5 từ điển biến: **25 → 28 biến** (đếm lại từng dòng; dòng `day/month/year` khai 3 biến) |
+| 2026-08-11 | ⭐ `COCAS-6003` báo **số thứ tự đoạn văn**, không phải "số dòng" — `.docx` không có dòng ([§12.8.3](12-dac-ta-module.md)) |
 
 ### Tóm tắt kết quả D2.0
 

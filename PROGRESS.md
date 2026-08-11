@@ -12,7 +12,7 @@
 P0: Chuẩn bị        [====] ✅ DONE (2026-08-11)
 P1: Nền tảng        [====] ✅ DONE (2026-08-09)
 P2: OCR Module      [====] 🔄 MÃ NGUỒN XONG (4/4 tuần) — chờ Golden Set ⭐ Critical path
-P3: Nghiệp vụ       [=   ] 🔄 ĐANG LÀM — module 1/7 (ExtractionPipeline) xong 2026-08-11
+P3: Nghiệp vụ       [==  ] 🔄 ĐANG LÀM — module 3/6 (TemplateInspector) xong 2026-08-11
 P4: Giao diện       [    ] ⏳ TODO (3 tuần)
 P5: Desktop         [    ] ⏳ TODO (2 tuần)
 P6: Hoàn thiện      [    ] ⏳ TODO (2 tuần)
@@ -343,7 +343,7 @@ Thẻ được **ghép từ chính dữ liệu, không từ tên file**: mọi �
 |---|---|---|
 | 1 | ⭐ **`ExtractionPipeline`** (Application §12.3) — biến 7 Port của P2 thành một lời gọi | ✅ **2026-08-11** |
 | 2 | ⭐ **Alias repository + Use Case OCR + nối `container.py`** | ✅ **2026-08-11** |
-| 3 | `TemplateInspector` (AST Jinja2, 10 mã chẩn đoán, chặn SSTI) | ⏳ |
+| 3 | ⭐ **`TemplateInspector`** (Port 20, AST Jinja2, 10 mã chẩn đoán, chặn SSTI) | ✅ **2026-08-11** |
 | 4 | `RenderContextBuilder` + `DocxContextAdapter` + `DocxRenderer` + repo `Contract` (nợ từ P1) | ⏳ |
 | 5 | ~~`PdfConverter` + `LibreOfficeManager` + font tiếng Việt~~ | 🗑️ **ĐÃ GỠ (D2.1)** |
 | 6 | `JobRunner` (polling bảng `job`) | ⏳ |
@@ -356,7 +356,9 @@ Thẻ được **ghép từ chính dữ liệu, không từ tên file**: mọi �
 - [x] ⭐ **Port 10 `IAliasRepository` có hiện thực thật** + repo `document_type` + repo `ocr_result`
 - [x] ⭐ **`ProcessOcrSessionUseCase`** + `container.py` nối trọn chuỗi OCR
 - [x] ⭐ **D2.1 — gỡ toàn bộ khâu xuất PDF và LibreOffice** (migration `011`)
-- [ ] Template Engine + RenderContextBuilder
+- [x] ⭐ **Port 20 `ITemplateInspector` + `DocxTemplateInspector`** — 2 mẫu thật VALID, 12/12 payload SSTI bị chặn
+- [x] ⭐ **Từ điển 28 biến hệ thống** (§9.5 — sửa từ con số 25 sai trong tài liệu)
+- [ ] RenderContextBuilder + DocxContextAdapter
 - [ ] DOCX Renderer (2 mẫu thật, STK in đậm)
 - [ ] Đặt tên file xuất
 - [ ] 62 endpoint
@@ -453,6 +455,37 @@ Thứ bị chặn từ module 1 đã thông: `ExtractionPipeline` **chạy đư�
 - ⚠️ **5 test tích hợp mới chưa chạy trên PostgreSQL thật** (`tests/integration/persistence/test_ocr_persistence.py`) — cụm portable ở cổng 55432 vẫn không chạy trên máy này. Chúng là **cách duy nhất** kiểm chứng `ck_ocr_field__tier_range` đã nới đúng, và cùng lý do đó `upgrade head` với migration `010`+`011` vẫn là món nợ.
 - ⚠️ **Chưa có `IFileStorage`**, nên Use Case nhận **bytes ảnh** chứ không tự nạp từ Vault. Bên gọi (endpoint/job) chịu trách nhiệm đó — module 6/7.
 
+#### ⭐ Module 3 — `TemplateInspector` (Port 20) (2026-08-11)
+
+Lần đầu tiên trong dự án **hai file `.docx` thật được đưa vào một phép đo** — và hoá ra chúng đã có sẵn placeholder Jinja2 đúng như §4.5 dự đoán.
+
+| Chỉ số | Kết quả |
+|---|---|
+| Mẫu thật đăng ký được | **2/2** — cả hai `VALID`, **0 chẩn đoán** |
+| `01A_HD_GDN.docx` | **12 biến** — đúng bằng con số §4.5 dự đoán ("12 biến") |
+| `01A_HD_GDKQ.docx` | **9 biến**, `securities_account_no` nhận đúng là **required + richtext** |
+| Payload SSTI bị chặn | **12/12** |
+| Mẫu sạch bị chặn nhầm | **0/4** |
+| Test mới | **74** (55 inspector · 12 từ điển biến · 7 kiểu trả về) |
+
+Đo lại bất cứ lúc nào: `python backend/scripts/verify_template_inspection.py "<thư mục .docx>"`.
+
+**Ba phát hiện, đều chỉ lộ ra khi chạy thật:**
+
+1. 🔴🔴 **Biện pháp bảo mật §9.9 #3 bản D2.0 là một cổng chặn LUÔN ĐÓNG.** Blacklist quét XML thô khớp `open` bên trong `http://schemas.openxmlformats.org/…` — không gian tên **bắt buộc của chính định dạng**. Đo: **101** lần khớp trong `01A_HD_GDN.docx`, **15** trong `01A_HD_GDKQ.docx`. Không phải hai file này xui: **mọi `.docx` từng tồn tại** đều mang chuỗi đó ⇒ tỉ lệ từ chối 100% kể cả file sạch. Sửa thành 5 luật trên **hình dạng AST**, blacklist hạ xuống làm lưới thứ hai và **chỉ quét thân thẻ Jinja2** (đo lại: 16 thẻ → 0 khớp, 11 thẻ → 0 khớp).
+2. ⭐⭐ **`{{r var }}` không phải cú pháp Jinja2.** `patch_xml()` của docxtpl đổi nó thành `{{ var }}` **trước khi** bộ phân tích chạy, nên `richtext_vars` / `COCAS-6008` / `COCAS-6010` không thể lấy từ AST. Bất biến "dùng AST, không dùng regex" của §12.8 chỉ áp cho **thu thập biến** — chỗ regex thật sự sai. Quét marker bằng cách **xoá mọi thẻ XML**: thao tác đó tự nối lại các `run` mà Word chẻ ra, nên không cần logic gộp run riêng (đã test với `{{r secur|ities_acc|ount_no }}` chẻ 3 mảnh).
+3. ⭐ **`.docx` không có "dòng".** `COCAS-6003` báo **số thứ tự đoạn văn**: chèn `\n` trước mỗi `<w:p` rồi lấy `lineno - 1` (đo: lỗi ở đoạn 6 → `lineno` 7), kèm trích nguyên văn đoạn đó. ⚠️ Số này đếm cả đoạn trong bảng nên lớn hơn `len(.paragraphs)` — GDKQ có **273** đoạn so với **16** đoạn cấp cao nhất.
+
+**Ba quyết định có chủ ý:**
+- **Thêm Port 20, không tái dùng số 13 đang khuyết** (§12.19.2). Ba Use Case gọi thẳng inspector và `cocas.application` bị cấm import `docxtpl`; không có Port thì quyết định từ chối mẫu phải trèo lên tầng Presentation.
+- **Chỉ 8/10 mã chẩn đoán nằm trong `diagnostics[]`** — `6002`/`6003` được **ném**, vì hai ca đó không phân tích được gì (§12.8.1).
+- **Không thêm "nhiều bên" thành lý do từ chối thứ tư** của `COCAS-6016`: §4.5 liệt kê đúng ba giới hạn v1.0, và `RenderContextBuilder` §12.9 bước 2 vốn dựng được cây nhiều bên.
+
+**Điểm mù còn lại của module 3:**
+- ⚠️ **`inspect()` chưa được Use Case nào gọi** — `RegisterTemplateUseCase` / `ValidateTemplateUseCase` là việc module 7. Hiện chỉ `Container` giữ instance.
+- ⚠️ **`COCAS-6015` (>10 MB) chỉ được test bằng cách hạ ngưỡng** — chưa có file thật nào chạm mốc đó (hai mẫu: 872 KB và 577 KB).
+- ⚠️ **Mọi ca kiểm thử tổng hợp đều do `python-docx` sinh ra**, không phải Word. Hai mẫu thật *có* do Word lưu và marker `{{r … }}` trong đó vẫn đọc đúng, nên rủi ro này nhỏ hơn vẻ ngoài — và cách quét (xoá **mọi** thẻ XML) vốn miễn nhiễm với `w:proofErr`/`w:bookmarkStart` chèn giữa thẻ. Cái chưa có bằng chứng là một mẫu Word **có vòng lặp / có điều kiện**.
+
 **Risks:**
 - 🔴 **p95 12.4 s/cặp so với ngân sách 9 s.** Đòn bẩy 2 đã cắt từ ~15.4 s xuống 9.5 s trung bình; phần còn lại nằm trong **bản thân lượt quét**. Ba hướng chưa thử: hạ `target_long_edge`; bỏ lượt đọc dải tiêu đề của bộ phân loại mặt khi QR/MRZ đã quyết; bỏ lần giải mã QR trùng mà bộ phân loại mặt gọi thêm (~66 ms/ảnh, đã đo, **cố ý chưa làm** vì mọi cách lấy an toàn đều phức tạp hơn phần lợi).
   - ⚠️ Máy đích thật vẫn **chưa biết**, và p95 từng lệch 1.7 lần giữa hai lần chạy giống hệt nhau. Đừng chốt hay bác bỏ chỉ tiêu này bằng một lần chạy.
@@ -545,7 +578,7 @@ Thứ bị chặn từ module 1 đã thông: `ExtractionPipeline` **chạy đư�
 | 3 | ~~MRZ ≥75% checksum~~ | P2w2 | ~~Hụt chỉ tiêu độ chính xác~~ | ✅ **ĐÓNG 2026-08-10** — đo 22/22 = 100%, 0 lần sửa lỗi |
 | 4 | Build .exe thử | P1 | PyInstaller không đóng gói được | Test ngay P1 |
 | 5 | PostgreSQL portable Windows | P1 | Chặn P5 | Spike ở P1, không đợi P5 |
-| 6 | Font LibreOffice | P3 | PDF sai layout | Đóng gói font đầu P3 |
+| 6 | ~~Font LibreOffice~~ | P3 | ~~PDF sai layout~~ | ✅ **ĐÓNG 2026-08-11 (D2.1)** — gỡ hẳn khâu xuất PDF, rủi ro biến mất cùng thứ sinh ra nó |
 
 ---
 

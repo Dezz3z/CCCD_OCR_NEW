@@ -76,7 +76,7 @@ Vi phạm = phải sửa, không phải tranh luận.
 | Endpoint API | ⭐ **62** *(D2.1: −2 endpoint PDF)* |
 | Wireframe | **8** |
 | Quy tắc validation | **56** |
-| Port (interface) | ⭐ **18** *(đánh số 1–19, **khuyết 13** — `IPdfConverter` gỡ ở D2.1)* |
+| Port (interface) | ⭐ **19** *(đánh số 1–20, **khuyết 13** — `IPdfConverter` gỡ ở D2.1; `ITemplateInspector` thêm ở P3 module 3)* |
 | Thư viện Python | **38** *(D2.1 bỏ `pypdf`)* |
 | Wizard | **3 bước** |
 | Mẫu hợp đồng | **2** (`01A_HD_GDN`, `01A_GDKQ`) |
@@ -130,18 +130,18 @@ Vi phạm = phải sửa, không phải tranh luận.
 
 **Giai đoạn 2 (Triển khai): P0 ✅ + P1 ✅ HOÀN THÀNH (2026-08-09). P2 (OCR) mã nguồn ✅ xong 2026-08-11 — tuần 1 (tiền xử lý ảnh) + tuần 2 (kênh QR/MRZ) + tuần 3 (engine + phân loại mặt + trích trường) + tuần 3b (thế hệ thẻ thứ hai) + tuần 4 (chuẩn hoá + hợp nhất + validation) + tầng 5 `issue_place`. Còn lại của P2 là Golden Set.**
 
-⭐ **P3 (Nghiệp vụ) ĐANG LÀM — module 2/6 xong 2026-08-11.** Module 1 `ExtractionPipeline`; module 2 alias/document-type/ocr-result repository + `ProcessOcrSessionUseCase` + nối `container.py`. ⭐ **D2.1 gỡ hẳn module 5 (PDF/LibreOffice) khỏi kế hoạch.** **1251 test xanh.**
+⭐ **P3 (Nghiệp vụ) ĐANG LÀM — module 3/6 xong 2026-08-11.** Module 1 `ExtractionPipeline`; module 2 alias/document-type/ocr-result repository + `ProcessOcrSessionUseCase`; ⭐ module 3 `DocxTemplateInspector` (**Port 20**, AST Jinja2, 10 mã chẩn đoán, chặn SSTI). ⭐ **D2.1 gỡ hẳn module 5 (PDF/LibreOffice) khỏi kế hoạch.** **1325 test xanh.**
 Chi tiết đầy đủ từng module — xem [progress.md](progress.md) (cập nhật theo từng module, không rút gọn).
 
-### Kiến trúc đã triển khai (P0 + P1 + P2 + P3 module 1)
+### Kiến trúc đã triển khai (P0 + P1 + P2 + P3 module 1–3)
 
 | Tầng | Trạng thái |
 |---|---|
-| `domain/` | ✅ Đầy đủ — 10 Value Object · 14 enum · 8 Entity · **7 Domain Service** (⭐ `IssuePlaceNormalizer` **5 tầng** với `issue_place_shape.py`) · ⭐ **18 Port** (+ fake/null cho mỗi Port; đánh số 1–19 khuyết 13) · cây ngoại lệ · ⭐ **`validation/`**: `ValidationEngine` + registry 4 tập quy tắc + **23 quy tắc `V-OCR-*`** (3 tập còn lại đăng ký **rỗng**, không phải thiếu — xem ghi chú trong `engine.py`) |
-| `infrastructure/` | Một phần — **persistence** (19 bảng, **10 migration**, 7/8 repository + UnitOfWork; `Contract` repo **hoãn có chủ đích** vì phụ thuộc `RenderContextBuilder` chưa tồn tại) · **security** (DPAPI thật + AES-256-GCM + blind index) · **logging** (Loguru 3 sink + PII filter 2 lớp) · **system** · ⭐ **ocr đầy đủ 8/8 Port OCR**: `preprocessing` · `channels` (`ZxingQrDecoder`, `Td1MrzReader`) · `engines` (`PaddleOcrAdapter`) · `classification` (`HeuristicSideClassifier`, ⭐ `MarkerDocumentTypeSelector`) · `extraction` · `text_matching.py`. Chưa có: storage, documents, queue, **alias repository** |
+| `domain/` | ✅ Đầy đủ — 10 Value Object · 14 enum · 8 Entity · **7 Domain Service** (⭐ `IssuePlaceNormalizer` **5 tầng** với `issue_place_shape.py`) + ⭐ **từ điển 28 biến template** (`template_variables.py`) · ⭐ **19 Port** (+ fake/null cho mỗi Port; đánh số 1–20 khuyết 13) · cây ngoại lệ · ⭐ **`validation/`**: `ValidationEngine` + registry 4 tập quy tắc + **23 quy tắc `V-OCR-*`** (3 tập còn lại đăng ký **rỗng**, không phải thiếu — xem ghi chú trong `engine.py`) |
+| `infrastructure/` | Một phần — **persistence** (19 bảng, **10 migration**, 7/8 repository + UnitOfWork; `Contract` repo **hoãn có chủ đích** vì phụ thuộc `RenderContextBuilder` chưa tồn tại) · **security** (DPAPI thật + AES-256-GCM + blind index) · **logging** (Loguru 3 sink + PII filter 2 lớp) · **system** · ⭐ **ocr đầy đủ 8/8 Port OCR**: `preprocessing` · `channels` (`ZxingQrDecoder`, `Td1MrzReader`) · `engines` (`PaddleOcrAdapter`) · `classification` (`HeuristicSideClassifier`, ⭐ `MarkerDocumentTypeSelector`) · `extraction` · `text_matching.py` · ⭐ **documents**: `DocxTemplateInspector` (Port 20). Chưa có: storage, queue, `DocxRenderer`, `DocxContextAdapter` |
 | `application/` | ⭐ Một phần — `dto/extraction.py` · `pipelines/extraction_pipeline.py` (9 chặng S3→S11) · ⭐ **`use_cases/ocr/process_ocr_session.py`** (2 transaction kẹp lượt OCR — ngoại lệ §12.14.1). Use Case khác vẫn rỗng |
 | `presentation/` | Một phần — middlewares (CORS, security headers, correlation-id, local token) · chưa có router/endpoint nào (⭐ 62 endpoint là việc P3 module 7) |
-| `container.py` | ✅ Composition Root — ⭐ **đã nối trọn chuỗi OCR**: 8 adapter P2 + `ExtractionPipeline` + `process_ocr_session_use_case()`. ⚠️ `warm_up()` cố ý không gọi ở đây |
+| `container.py` | ✅ Composition Root — ⭐ **đã nối trọn chuỗi OCR**: 8 adapter P2 + `ExtractionPipeline` + `process_ocr_session_use_case()` + ⭐ `template_inspector`. ⚠️ `warm_up()` cố ý không gọi ở đây |
 
 ⭐ Mốc demo M1 (roadmap §14.3) đã đạt: [`backend/scripts/demo_m1_customer.py`](backend/scripts/demo_m1_customer.py) tạo Customer giả qua Container thật, đọc lại giải mã đúng, xác nhận `id_number_enc` là nhị phân không đọc được — chạy thật trên PostgreSQL. Đã có bản build `.exe` trial đầu tiên ([`backend/build.spec`](backend/build.spec)) — khởi động và trả request thật; chưa đóng gói model OCR thật (chưa có adapter).
 
@@ -188,6 +188,14 @@ Mọi mục dưới đây đã đồng bộ ngược vào `docs/design/`, không
 - ⚠️ **`mrz_corrections_applied`: `NULL` ≠ `0`.** `NULL` = không có MRZ để đọc; `0` = đọc được, không phải sửa. Tỉ lệ sửa lỗi §7.5 chia cho vế thứ hai. Cùng loại: phiên `FAILED` **không có dòng `ocr_result`** — ghi dòng toàn NULL sẽ khiến "chạy không ra gì" giống hệt "thẻ trắng".
 - ⚠️ **AAD của `ocr_field` gắn vào `id` của chính dòng đó**, không gắn vào phiên hay tên trường — nếu không, ciphertext dời được giữa 6 dòng cùng kết quả và `dob` dán đè `id_number` vẫn giải mã sạch.
 - ⭐ **Chỉ 9/23 quy tắc `V-OCR-*` chặn cứng.** Thẻ hết hạn, tuổi bất thường, mã tỉnh lạ đều là 🟡 — chặn vì nghi ngờ là để người dùng không lập được hợp đồng cho khách đang ngồi trước mặt (P-08). Và trường **trống** chỉ do `V-OCR-017` báo: các quy tắc hình dạng (003/005/006/007/016) chỉ chạy khi trường **có giá trị nhưng sai dạng**, nếu không một ô hỏng sẽ nhận hai lỗi.
+- 🔴🔴 **Quét blacklist chuỗi trên XML thô là một cổng chặn LUÔN ĐÓNG** (P3 module 3). §9.9 biện pháp #3 bản D2.0 từ chối file chứa `open` — và `open` nằm trong `http://schemas.openxmlformats.org/…`, không gian tên **bắt buộc của chính định dạng `.docx`**. Đo: 101 lần khớp trong `01A_HD_GDN.docx`, 15 trong `01A_HD_GDKQ.docx` ⇒ **từ chối 100% file sạch**. Sửa: chốt chặn chính là **hình dạng AST** (5 luật §9.9.1), blacklist chỉ quét **thân thẻ `{{ }}`/`{% %}`** (đo lại: 0 khớp).
+  - ⚠️ **Luật AST phải soi `Getattr.attr`, không soi tên biến.** `{{ ''.__class__ }}` **không có nút `Name` nào** — gốc của nó là hằng chuỗi rỗng. Bộ quét chỉ nhìn tên biến cho payload này qua thẳng.
+  - ⚠️ **Bộ phân tích cú pháp không cứu được gì:** cả 12 payload SSTI trong bộ test đều **phân tích sạch**. Nếu không quét thì chúng đi thẳng tới sandbox.
+- ⭐⭐ **`{{r var }}` và `{%p … %}` KHÔNG phải cú pháp Jinja2 — chúng biến mất trước khi AST hình thành.** `patch_xml()` của docxtpl đổi `{{r x }}` thành `{{ x }}` rồi mới đưa cho bộ phân tích. Nên `richtext_vars`, `COCAS-6008` và `COCAS-6010` **bắt buộc** quét văn bản; bất biến "dùng AST, không dùng regex" chỉ áp cho **thu thập biến**. Cách quét đã kiểm chứng: **xoá mọi thẻ XML** (`<[^>]+>`) — thao tác đó tự nối lại các `run` mà Word chẻ ra, nên không cần logic gộp run riêng.
+- ⭐ **`.docx` không có "dòng" — `COCAS-6003` phải báo SỐ THỨ TỰ ĐOẠN VĂN.** Chèn `\n` trước mỗi `<w:p` thì `TemplateSyntaxError.lineno - 1` **chính là** số thứ tự đoạn (đo: lỗi ở đoạn 6 → lineno 7). ⚠️ Số này đếm cả đoạn trong bảng nên lớn hơn `len(python-docx .paragraphs)` (mẫu GDKQ: 273 so với 16).
+- ⚠️ **Header/footer là các *part* riêng.** `DocxTemplate.get_xml()` chỉ trả `word/document.xml`; cả 2 mẫu thật đều có chân trang. Bỏ qua ⇒ biến trong chân trang bị coi là "khai báo nhưng không dùng" (`COCAS-6011`) — cảnh báo sai trên file đúng.
+- ⭐ **Chỉ 8/10 mã chẩn đoán nằm trong `diagnostics[]`.** `COCAS-6002`/`6003` được **ném**, vì hai ca đó không phân tích được gì — trả về một `TemplateInspection` rỗng-nhưng-hợp-lệ sẽ khiến bên gọi tưởng đã quét xong và thấy 0 biến (§12.8.1).
+- ⚠️ **Không tự thêm lý do từ chối cho `party_schema`.** §4.5 liệt kê đúng **ba** giới hạn v1.0 (`entity_type`, `min`/`max`, `collect`). Thêm "nhiều bên" thành lý do thứ tư sẽ chặn mẫu mà `RenderContextBuilder` §12.9 bước 2 vốn dựng được.
 
 ### Ràng buộc cần biết khi làm tiếp P2
 

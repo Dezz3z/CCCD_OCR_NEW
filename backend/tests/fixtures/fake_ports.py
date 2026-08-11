@@ -13,7 +13,7 @@ from __future__ import annotations
 
 import hashlib
 import uuid
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from datetime import date, datetime
 from types import TracebackType
 from typing import Any
@@ -22,6 +22,7 @@ from cocas.domain.enums.card_side import CardSide
 from cocas.domain.enums.field_key import FieldKey
 from cocas.domain.enums.job_status import JobStatus
 from cocas.domain.enums.job_type import JobType
+from cocas.domain.enums.template_validation_status import TemplateValidationStatus
 from cocas.domain.ports.crypto import AadContext, BidxField
 from cocas.domain.ports.documents import RenderResult
 from cocas.domain.ports.ocr import (
@@ -43,6 +44,7 @@ from cocas.domain.ports.ocr import (
 from cocas.domain.ports.persistence import AliasRecord, Page, Specification
 from cocas.domain.ports.queue import JobSnapshot, JobTarget
 from cocas.domain.ports.storage import VaultCategory, VaultRef
+from cocas.domain.ports.templates import TemplateInspection
 
 # ============================================================================
 # Image stand-ins
@@ -410,7 +412,7 @@ class InMemoryFileStorage:
 
 
 # ============================================================================
-# Ports 12, 13 — documents
+# Ports 12, 20 — documents & templates
 # ============================================================================
 
 
@@ -434,6 +436,28 @@ class FakeDocumentRenderer:
 
 
 # ⭐ Port 13 (IPdfConverter) had its fakes here until D2.1 removed the port.
+
+
+class FakeTemplateInspector:
+    """Port 20 — returns a canned inspection without opening anything.
+
+    ⭐ Deliberately does **not** parse: the whole point of the port is that a
+    Use Case test never needs a real `.docx`. Set `result` to whatever the
+    test needs the inspector to have concluded.
+    """
+
+    def __init__(self, result: TemplateInspection | None = None) -> None:
+        self.result = result or TemplateInspection(status=TemplateValidationStatus.VALID)
+        self.calls: list[tuple[int, int, int]] = []
+
+    def inspect(
+        self,
+        file_bytes: bytes,
+        party_schema: Sequence[Mapping[str, object]],
+        contract_fields: Sequence[Mapping[str, object]] = (),
+    ) -> TemplateInspection:
+        self.calls.append((len(file_bytes), len(party_schema), len(contract_fields)))
+        return self.result
 
 
 # ============================================================================

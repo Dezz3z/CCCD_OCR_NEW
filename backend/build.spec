@@ -24,6 +24,15 @@ block_cipher = None
 # xem pyproject.toml) cung cấp hook cho `paddle`/`cv2`; paddleocr's own
 # package-internal data files still need to be collected explicitly.
 datas = collect_data_files("paddleocr")
+
+# ⭐ P3 module 3 — `python-docx` mang theo `docx/templates/` (`default.docx`,
+# `default-settings.xml`, `default-styles.xml`…) và **nạp chúng bằng đường dẫn
+# tương đối lúc chạy**, không qua `import`. `docxtpl` tự nó không có data file,
+# nhưng nó gọi `python-docx`, nên thiếu thư mục này thì `Document()` hỏng khi
+# mở một `.docx` không đủ part — lỗi chỉ hiện ở bản đóng gói, không hiện khi
+# chạy từ mã nguồn. ~50 KB.
+datas += collect_data_files("docx")
+
 datas += [
     ("migrations", "migrations"),
 ]

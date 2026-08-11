@@ -1,4 +1,4 @@
-"""⭐ The 18 Ports — every point at which infrastructure can be replaced (P-03).
+"""⭐ The 19 Ports — every point at which infrastructure can be replaced (P-03).
 
 Numbered per the lookup table in docs/design/12-dac-ta-module.md §12.19:
 
@@ -23,6 +23,7 @@ Numbered per the lookup table in docs/design/12-dac-ta-module.md §12.19:
 | 17 | IIdGenerator          | `system`      |
 | 18 | ICryptoService        | `crypto`      |
 | 19 | IDocumentTypeSelector | `ocr`         |
+| 20 | ITemplateInspector    | `templates`   |
 
 ⭐ Acceptance criterion (§12.19): every port must have at least one
 fake/null implementation used in tests.
@@ -38,7 +39,11 @@ caller's answer.
 ⭐ **Port 13 was removed in D2.1** together with PDF export (§9.13). The
 numbering keeps the gap rather than shifting 14–19 down, so every existing
 `§12.1x` citation in code, docs and commit history still points at the same
-thing. That is why 18 ports are numbered 1–19.
+thing. That is why 19 ports are numbered 1–20.
+
+⭐ **Port 20 was added in P3 module 3** — and deliberately did *not* reuse the
+vacant 13. See `ITemplateInspector` and §12.19.2 for why the inspector needs
+to be a port at all.
 """
 from cocas.domain.ports.crypto import AadContext, BidxField, ICryptoService
 from cocas.domain.ports.documents import IDocumentRenderer, RenderResult
@@ -82,12 +87,19 @@ from cocas.domain.ports.persistence import (
 from cocas.domain.ports.queue import DEFAULT_PRIORITY, IJobQueue, JobSnapshot, JobTarget
 from cocas.domain.ports.storage import IFileStorage, VaultCategory, VaultRef
 from cocas.domain.ports.system import IClock, IIdGenerator
+from cocas.domain.ports.templates import (
+    DiagnosticSeverity,
+    ITemplateInspector,
+    TemplateDiagnostic,
+    TemplateInspection,
+)
 
 __all__ = [
     "DEFAULT_PRIORITY",
     "AadContext",
     "AliasRecord",
     "BidxField",
+    "DiagnosticSeverity",
     "DocumentTypeSpec",
     "EngineInfo",
     "ExtractionStrategy",
@@ -108,6 +120,7 @@ __all__ = [
     "IReadRepository",
     "IReadWriteRepository",
     "IRegionRecognizer",
+    "ITemplateInspector",
     "IUnitOfWork",
     "IWriteRepository",
     "ImageData",
@@ -128,6 +141,8 @@ __all__ = [
     "SideClassification",
     "SideVerdict",
     "Specification",
+    "TemplateDiagnostic",
+    "TemplateInspection",
     "TextRegion",
     "VaultCategory",
     "VaultRef",

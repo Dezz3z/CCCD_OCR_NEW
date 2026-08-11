@@ -116,12 +116,20 @@ class NotADocxFileError(DocumentGenerationError):
 
 
 class TemplateSyntaxError(DocumentGenerationError):
-    """Invalid Jinja2 syntax found while scanning a template's AST."""
+    """Invalid Jinja2 syntax found while scanning a template's AST.
+
+    ⭐ `line` is the **paragraph ordinal**, not a line number: a `.docx` has no
+    lines — Word decides where text wraps — so the only position a user can
+    act on is "the Nth paragraph" (§12.8.3). The ordinal counts paragraphs
+    inside tables too.
+    """
 
     code = "TEMPLATE_SYNTAX_ERROR"
 
     def __init__(self, line: int, detail: str) -> None:
-        super().__init__(f"Lỗi cú pháp mẫu ở dòng {line}: {detail}", line=line, detail=detail)
+        super().__init__(
+            f"Lỗi cú pháp ở đoạn văn thứ {line}: {detail}", line=line, detail=detail
+        )
         self.line = line
         self.detail = detail
 

@@ -231,21 +231,52 @@
 
 ---
 
-## 12.8. `TemplateInspector`
+## 12.8. `TemplateInspector` — ⭐ Port 20 `ITemplateInspector`
 
 | Mục | Nội dung |
 |---|---|
-| **Tầng** | Infrastructure |
+| **Tầng** | Domain (Port) · hiện thực `DocxTemplateInspector` (Infrastructure) |
 | **Trách nhiệm** | Mở file `.docx`, quét biến bằng **AST Jinja2**, đối chiếu từ điển |
-| **Phương thức** | `inspect(file_bytes: bytes, party_schema: PartySchema) -> TemplateInspection` |
+| **Phương thức** | `inspect(file_bytes, party_schema, contract_fields=()) -> TemplateInspection` |
 | **Tiền điều kiện** | `file_bytes` không rỗng |
 | **Hậu điều kiện** | `inspection.status ∈ {VALID, WARNING, INVALID}`; nếu `INVALID` thì `diagnostics` có ít nhất một mục mức ERROR |
 | **Bất biến** | ⭐ **Không bao giờ render** trong lúc kiểm tra — chỉ phân tích cú pháp. Render là việc của `DocxRenderer` |
-| **Bất biến** | ⭐ Dùng **AST Jinja2**, không dùng regex quét text |
-| **Ném ra** | `NotADocxFileError` · `TemplateSyntaxError(line, detail)` |
-| **Kiểm tra bảo mật** | ⭐ Quét mẫu nguy hiểm (`__`, `class`, `mro`, `globals`, `import`, `eval`, `lipsum`, …) → `COCAS-6014` |
-| **Kiểm tra phạm vi** | ⭐ `party_schema` chỉ dùng tính năng v1.0 (`entity_type=INDIVIDUAL`, `min=max=1`) → `COCAS-6016` |
+| **Bất biến** | ⭐ Thu thập biến bằng **AST Jinja2**, không dùng regex quét text — xem ngoại lệ đã đo ở §12.8.2 |
+| **Ném ra** | `NotADocxFileError` · `TemplateSyntaxError(line, detail)` — **chỉ hai ca này**, xem §12.8.1 |
+| **Kiểm tra bảo mật** | ⭐ Chặn bằng **hình dạng AST** (`Getattr` bắt đầu bằng `_`, `Call`, `Include`/`Extends`/`Import`, bộ lọc ngoài danh sách trắng, tên toàn cục Jinja2) → `COCAS-6014`. Blacklist chuỗi là lớp phụ và **chỉ quét thân thẻ Jinja2** (§9.9) |
+| **Kiểm tra phạm vi** | ⭐ `party_schema` chỉ dùng tính năng v1.0 (`entity_type=INDIVIDUAL`, `min=max=1`, `collect ⊆ {contact, bank_account}`) → `COCAS-6016` |
 | **Đầu ra** | `TemplateInspection{ status, declared[], required[], optional[], unknown[], richtext_vars[], has_loops, has_conditionals, diagnostics[] }` |
+
+> ⭐ **`contract_fields` là tham số thêm ở P3 (mặc định rỗng).** `contract_template.contract_fields` khai biến cấp hợp đồng y như `party_schema[].extra_fields` khai biến cấp bên. Không truyền vào thì mọi biến khai ở đó bị báo `COCAS-6009` "không xác định" — cảnh báo sai trên chính mẫu do người dùng khai đúng. Cả 2 mẫu v1.0 đều có `contract_fields: []` nên mặc định rỗng giữ nguyên hành vi.
+
+### ⭐ 12.8.1. Ranh giới "ném ra" và "trả về"
+
+Bảng §9.3 liệt kê 10 mã chẩn đoán, nhưng **không phải cả 10 đều nằm trong `diagnostics[]`**:
+
+| Nhóm | Mã | Cách báo | Vì sao |
+|---|---|---|---|
+| **Phân tích bất khả thi** | `COCAS-6002` · `COCAS-6003` | **Ném ngoại lệ** | Không mở được file, hoặc Jinja2 không dựng được AST ⇒ **không có gì để báo cáo**. Trả một `TemplateInspection` rỗng-nhưng-hợp-lệ sẽ khiến bên gọi tưởng đã quét xong và thấy 0 biến |
+| **Phân tích được, nhưng phải từ chối** | `COCAS-6014` · `COCAS-6016` | **Trả về**, mức ERROR ⇒ `status = INVALID` | Người dùng vẫn cần thấy danh sách biến bên cạnh lý do từ chối |
+| **Cảnh báo** | `6008` `6009` `6010` `6011` `6012` `6015` | **Trả về**, mức WARNING ⇒ `status = WARNING` | Không chặn đăng ký |
+
+Use Case là bên ánh xạ sang HTTP: hai ngoại lệ → `400/422`, `status = INVALID` → `422`.
+
+### ⭐ 12.8.2. Hai thứ AST **không** thấy được — và vì sao đó không phải lách luật
+
+Đã đo trên `docxtpl 0.18.0` (2026-08-11):
+
+1. **`{{r var }}` và `{%p … %}` biến mất trước khi Jinja2 nhìn thấy nguồn.** Chúng **không phải cú pháp Jinja2** — chúng là tiền tố tiền xử lý của docxtpl. `patch_xml()` biến `{{r securities_account_no }}` thành `{{ securities_account_no }}` rồi mới đưa cho bộ phân tích. Đo: cả 3 marker `{{r `, `{{p `, `{%p ` đều **không còn** trong nguồn đã vá.
+   - ⇒ `richtext_vars[]`, `COCAS-6008` và `COCAS-6010` **bắt buộc** phải quét văn bản, không thể lấy từ AST. Bất biến "dùng AST, không dùng regex" áp cho **thu thập biến**, không áp cho **nhận diện marker của docxtpl**.
+   - Cách quét đã kiểm chứng: **xoá mọi thẻ XML của phần** (`<[^>]+>`) — thao tác này tự nối lại các `run` mà Word chẻ ra — rồi tìm marker trên văn bản thu được. Đo trên `01A_HD_GDKQ.docx` thật: thấy đúng `{{r securities_account_no }}`; `01A_HD_GDN.docx`: 0 marker (đúng, mẫu này không có biến in đậm).
+2. **Header và footer là các *part* riêng.** `DocxTemplate.get_xml()` chỉ trả `word/document.xml`. Cả 2 mẫu thật đều có `footer1.xml` (và `01A_HD_GDN.docx` có thêm `header1.xml`). Bỏ qua chúng thì biến đặt trong chân trang không vào `declared[]` ⇒ `COCAS-6011` báo thiếu biến **mà file có dùng**.
+
+### ⭐ 12.8.3. "Số dòng" của `COCAS-6003` là **số thứ tự đoạn văn**
+
+Trong `.docx` không có khái niệm dòng — dòng là do Word ngắt khi hiển thị. Thứ đếm được và người dùng chỉ vào được là **đoạn văn** (`<w:p>`).
+
+Cách lấy: chèn `\n` trước mỗi `<w:p` trong nguồn đã vá (chính thủ thuật `render_xml_part()` của docxtpl dùng), khi đó `TemplateSyntaxError.lineno - 1` **chính là** số thứ tự `<w:p>`. Đo: lỗi đặt ở đoạn 6 → `lineno = 7`. Trích được nguyên văn đoạn đó để ghép vào `detail`.
+
+⚠️ Số này đếm **cả đoạn nằm trong bảng**, nên nó lớn hơn `len(python-docx .paragraphs)` (mẫu `01A_HD_GDKQ.docx`: 273 đoạn so với 16 đoạn cấp cao nhất). Thông điệp phải nói "đoạn văn thứ N (tính cả đoạn trong bảng)".
 
 ---
 
@@ -300,7 +331,7 @@
 
 > ⭐ **Mục này đã bị gỡ bỏ cùng toàn bộ khâu xuất PDF.** Xem §9.13 để biết lý do đầy đủ.
 >
-> **Số mục §12.12 được giữ nguyên chỗ trống có chủ ý** — đánh lại số từ §12.13 trở đi sẽ làm sai mọi trích dẫn `§12.1x` đang tồn tại trong mã nguồn, tài liệu khác và lịch sử commit. Cùng lý do đó, **Port số 13 để khuyết** trong bảng §12.19: 18 Port, đánh số 1–19.
+> **Số mục §12.12 được giữ nguyên chỗ trống có chủ ý** — đánh lại số từ §12.13 trở đi sẽ làm sai mọi trích dẫn `§12.1x` đang tồn tại trong mã nguồn, tài liệu khác và lịch sử commit. Cùng lý do đó, **Port số 13 để khuyết** trong bảng §12.19: ⭐ 19 Port, đánh số 1–20.
 
 | Đã gỡ | Thay bằng |
 |---|---|
@@ -444,7 +475,7 @@
 
 ---
 
-## 12.19. Bảng tra cứu nhanh — ⭐ 18 Port *(đánh số 1–19, khuyết 13)*
+## 12.19. Bảng tra cứu nhanh — ⭐ 19 Port *(đánh số 1–20, khuyết 13)*
 
 | # | Port | Tầng hiện thực | Hiện thực chính |
 |---|---|---|---|
@@ -467,6 +498,7 @@
 | 17 | `IIdGenerator` | Infrastructure | `Uuid7Generator` · `SequentialIdGenerator` (test) |
 | 18 | `ICryptoService` | Infrastructure | `DpapiCryptoService` · `NullCryptoService` (dev) |
 | ⭐ 19 | `IDocumentTypeSelector` | Infrastructure | `MarkerDocumentTypeSelector` |
+| ⭐ 20 | `ITemplateInspector` | Infrastructure | `DocxTemplateInspector` |
 
 > ⭐ **Mỗi Port phải có ít nhất một hiện thực fake/null dùng trong test.** Đây là tiêu chí nghiệm thu kiến trúc.
 
@@ -486,6 +518,18 @@
 | **Đo thật** | 2026-08-11, 46 ảnh: **43/44 quyết định đúng · 0 sai · 1 từ chối trả lời** |
 
 ⚠️ **Điểm mù đã biết:** ca duy nhất từ chối là một **mặt sau Căn cước 2024** mà chữ in bị nhoè. Tín hiệu **cấu trúc** (một ảnh mang cả QR lẫn MRZ thì chỉ có thể là mặt sau 2024) sẽ quyết định được ca đó, nhưng Port 19 chỉ nhận `regions` nên không thấy tín hiệu này. Muốn vá thì phải thêm dữ liệu "thế hệ này in QR ở mặt nào" vào `document_type` — hoãn có chủ đích (P-10) cho tới khi Golden Set cho thấy tỉ lệ này đáng kể.
+
+### ⭐ 12.19.2. Vì sao có Port thứ 20 (thêm ở P3)
+
+`TemplateInspector` từng được xếp thuần Infrastructure (§12.8 bản D2.0) vì không ai gọi nó từ tầng trên. Đến khi hiện thực thì có **ba** Use Case gọi thẳng vào nó — `RegisterTemplateUseCase`, `ValidateTemplateUseCase`, `AddTemplateVersionUseCase` (§1 danh sách Use Case) — và hợp đồng import-linter cấm `cocas.application` import `docxtpl`. Không có Port thì hoặc tầng Application phải import thư viện render, hoặc **quyết định từ chối mẫu phải chuyển lên tầng Presentation** — tức là đưa luật nghiệp vụ ra khỏi chỗ của nó.
+
+| Mục | Nội dung |
+|---|---|
+| **Tầng** | Domain (Port) · hiện thực `DocxTemplateInspector` (Infrastructure) |
+| **Kiểu trả về** | `TemplateInspection` + `TemplateDiagnostic` — **từ vựng Domain**, không phải DTO Application (cùng lý do với `OcrResultSnapshot`, §12.14) |
+| **Fake bắt buộc** | `FakeTemplateInspector` — trả kết quả dựng sẵn, không mở file |
+
+⭐ **Số 13 vẫn để khuyết.** Port mới lấy số **20**, không lấp vào chỗ `IPdfConverter` đã gỡ: tái dùng số cũ sẽ khiến mọi trích dẫn "Port 13" trong lịch sử commit trỏ sang một thứ hoàn toàn khác. 19 Port, đánh số 1–20.
 
 ---
 

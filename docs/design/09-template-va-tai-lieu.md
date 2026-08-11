@@ -2,7 +2,7 @@
 
 [← Mục lục](README.md)
 
-**docxtpl (Jinja2 sandboxed) · ⭐ Đầu ra DUY NHẤT là `.docx` · Từ điển 25 biến**
+**docxtpl (Jinja2 sandboxed) · ⭐ Đầu ra DUY NHẤT là `.docx` · Từ điển 28 biến**
 
 > ⭐ **D2.1 — Đã gỡ bỏ hoàn toàn khâu xuất PDF và LibreOffice.** Hệ thống chỉ sinh `.docx`. Xem §9.13 để biết lý do và hệ quả.
 
@@ -54,12 +54,13 @@ stateDiagram-v2
 | # | Bước | Chi tiết |
 |---|---|---|
 | 1 | Kiểm tra định dạng file | Phải là ZIP hợp lệ chứa `word/document.xml` — kiểm magic bytes `PK\x03\x04`, **không tin đuôi file** |
-| 2 | Trích văn bản mẫu | docxtpl gộp các `run` bị chẻ (Word hay chẻ `{{ full_name }}` thành nhiều run khi soạn thảo) |
-| 3 | Phân tích cú pháp Jinja2 | Lấy AST. Lỗi → `COCAS-6003` **kèm số dòng và mô tả** |
-| 4 | Thu thập biến | Duyệt AST lấy `Name`, `Getattr`, `Getitem`. Phân biệt biến gốc (`full_name`), thuộc tính (`holder.full_name`), phần tử mảng (`co_holder[0]`) |
-| 5 | Phân loại | Đối chiếu từ điển biến hệ thống → `required` / `optional` / `unknown` |
-| 6 | Phát hiện cấu trúc | Có `{% for %}`? `{% if %}`? `{{r ... }}` (rich text)? `{%p ... %}` (paragraph/ảnh)? |
-| 7 | ⭐ Quét bảo mật | Từ chối mẫu chứa cấu trúc nguy hiểm (§9.9) |
+| 2 | ⭐ Liệt kê **mọi part chứa văn bản** | `word/document.xml` **và** `word/header*.xml` / `word/footer*.xml`. Cả 2 mẫu thật đều có chân trang; bỏ qua sẽ báo thiếu biến mà file có dùng |
+| 3 | Trích văn bản mẫu | docxtpl gộp các `run` bị chẻ (Word hay chẻ `{{ full_name }}` thành nhiều run khi soạn thảo) |
+| 4 | Phân tích cú pháp Jinja2 | Lấy AST. Lỗi → `COCAS-6003` **kèm số thứ tự đoạn văn và mô tả** (xem §12.8.3 — trong `.docx` không có "dòng") |
+| 5 | Thu thập biến | Duyệt AST lấy `Name`, `Getattr`, `Getitem`. Phân biệt biến gốc (`full_name`), thuộc tính (`holder.full_name`), phần tử mảng (`co_holder[0]`). ⚠️ **Bỏ biến vòng lặp** — `{% for p in parties %}` không khai biến `p` cho người dùng |
+| 6 | Phân loại | Đối chiếu từ điển §9.5 + `party_schema[].extra_fields` + `contract_fields` → `required` / `optional` / `unknown` |
+| 7 | Phát hiện cấu trúc | `{% for %}` và `{% if %}` lấy từ **AST**. ⭐ `{{r … }}` và `{%p … %}` **phải lấy từ văn bản** — chúng không phải cú pháp Jinja2 và đã bị `patch_xml()` xoá trước khi AST hình thành (§12.8.2) |
+| 8 | ⭐ Quét bảo mật | Từ chối mẫu chứa cấu trúc nguy hiểm (§9.9) |
 
 **Kết quả lưu vào `template_version`:** `declared_variables`, `required_variables`, `optional_variables`, `unknown_variables`, `richtext_variables`, `has_loops`, `has_conditionals`, `validation_status`, `validation_report`.
 
@@ -67,18 +68,22 @@ stateDiagram-v2
 
 ## 9.3. Danh mục chẩn đoán khi kiểm tra mẫu
 
-| Mã | Mức | Điều kiện | Thông điệp cho người dùng |
-|---|---|---|---|
-| `COCAS-6002` | 🔴 | File không phải DOCX hợp lệ | "File không đúng định dạng Word (.docx)." |
-| `COCAS-6003` | 🔴 | Lỗi cú pháp Jinja2 | "Lỗi cú pháp tại dòng {n}: {chi tiết}. Kiểm tra dấu ngoặc `{{ }}` và `{% %}`." |
-| `COCAS-6008` | 🟡 | Biến khai báo `render_style` nhưng viết dạng thường | ⭐ "Biến '{v}' cần in đậm. Sửa `{{ v }}` thành `{{r v }}`." |
-| `COCAS-6009` | 🟡 | Biến không có trong từ điển | "Biến '{v}' không xác định — sẽ được thay bằng chuỗi rỗng. Nếu cần, khai báo ở 'Trường bổ sung'." |
-| `COCAS-6010` | 🟡 | Chứa placeholder ảnh (`{%p ... %}`) | "Hệ thống không nhúng ảnh vào hợp đồng. Placeholder này sẽ bị bỏ trống." |
-| `COCAS-6011` | 🟡 | Biến bắt buộc của `party_schema` không xuất hiện | "Mẫu khai báo cần '{v}' nhưng file không dùng biến này." |
-| `COCAS-6012` | 🟡 | `{% for %}` trên biến không phải mảng | "Biến '{v}' không lặp được." |
-| `COCAS-6014` | 🔴 | ⭐ Cấu trúc Jinja2 nguy hiểm | "Mẫu chứa cấu trúc không được phép vì lý do an toàn." |
-| `COCAS-6015` | 🟡 | File > 10 MB | "File khá lớn — có thể chứa ảnh nền không cần thiết." |
-| `COCAS-6016` | 🔴 | ⭐ `party_schema` dùng tính năng chưa hỗ trợ ở v1.0 | "Mẫu hợp đồng dành cho tổ chức / nhiều bên chưa được hỗ trợ ở phiên bản này." |
+| Mã | Mức | Cách báo | Điều kiện | Thông điệp cho người dùng |
+|---|---|---|---|---|
+| `COCAS-6002` | 🔴 | ⭐ **ném** | File không phải DOCX hợp lệ | "File không đúng định dạng Word (.docx)." |
+| `COCAS-6003` | 🔴 | ⭐ **ném** | Lỗi cú pháp Jinja2 | ⭐ "Lỗi cú pháp ở đoạn văn thứ {n}: {chi tiết}. Kiểm tra dấu ngoặc `{{ }}` và `{% %}`." |
+| `COCAS-6008` | 🟡 | trả về | Biến khai báo `render_style` nhưng viết dạng thường | ⭐ "Biến '{v}' cần in đậm. Sửa `{{ v }}` thành `{{r v }}`." |
+| `COCAS-6009` | 🟡 | trả về | Biến không có trong từ điển | "Biến '{v}' không xác định — sẽ được thay bằng chuỗi rỗng. Nếu cần, khai báo ở 'Trường bổ sung'." |
+| `COCAS-6010` | 🟡 | trả về | ⭐ Chứa thẻ cấp đoạn/ảnh của docxtpl (`{%p …%}`, `{{p …}}`) | "Hệ thống không nhúng ảnh vào hợp đồng. Placeholder này sẽ bị bỏ trống." |
+| `COCAS-6011` | 🟡 | trả về | Biến bắt buộc của `party_schema` không xuất hiện | "Mẫu khai báo cần '{v}' nhưng file không dùng biến này." |
+| `COCAS-6012` | 🟡 | trả về | `{% for %}` trên biến không phải mảng | "Biến '{v}' không lặp được." |
+| `COCAS-6014` | 🔴 | trả về | ⭐ Cấu trúc Jinja2 nguy hiểm | "Mẫu chứa cấu trúc không được phép vì lý do an toàn." |
+| `COCAS-6015` | 🟡 | trả về | File > 10 MB | "File khá lớn — có thể chứa ảnh nền không cần thiết." |
+| `COCAS-6016` | 🔴 | trả về | ⭐ `party_schema` dùng tính năng chưa hỗ trợ ở v1.0 | "Mẫu hợp đồng dành cho tổ chức / nhiều bên chưa được hỗ trợ ở phiên bản này." |
+
+> ⭐ **Cột "Cách báo" thêm ở P3.** Hai mã đầu là ca **không phân tích được gì** nên không thể nằm trong `diagnostics[]` của một `TemplateInspection` — lý do đầy đủ ở §12.8.1.
+>
+> ⭐ **`COCAS-6012` trong v1.0 nghĩa là "mọi `{% for %}` trên biến đã biết".** Vì `min = max = 1` (§4.5) nên **không biến nào** trong từ điển §9.5 là mảng. Vòng lặp trên biến *chưa* biết thì đã có `COCAS-6009` nói rồi — không báo hai lần cho một ô.
 
 ---
 
@@ -107,9 +112,11 @@ data/templates/
 
 ---
 
-## 9.5. ⭐ Từ điển biến hệ thống v1.0 (25 biến)
+## 9.5. ⭐ Từ điển biến hệ thống v1.0 (⭐ 28 biến / 26 dòng)
 
 Đây là danh sách biến người soạn template được dùng trong `.docx`. Endpoint `GET /templates/variables` trả về bảng này.
+
+> ⭐ **Sửa 2026-08-11: 28 biến, không phải 25.** Đếm lại từng dòng của chính 5 bảng dưới đây: 11 + 3 + 5 + 1 + 8 = **28**. Con số 25 cũ sai theo cả hai cách đếm — kể cả đếm theo *dòng* cũng ra 26, vì dòng `{{day}} / {{month}} / {{year}} `khai **3** biến trong một ô. Tiêu đề "Biến hệ thống (6)" là số **dòng**, không phải số biến.
 
 ### Biến từ CCCD (11)
 
@@ -253,13 +260,42 @@ data/templates/
 |---|---|---|
 | 1 | ⭐ **`SandboxedEnvironment`** | Jinja2 cung cấp sẵn môi trường sandbox chặn truy cập thuộc tính bắt đầu bằng `_`, chặn `__class__`, `__globals__`, `__subclasses__`, `__builtins__`. **Bắt buộc, không tuỳ chọn** |
 | 2 | **Danh sách trắng bộ lọc** | Chỉ cho phép: `upper`, `lower`, `title`, `trim`, `default`, `length`, `join`, `replace`, `first`, `last`. Chặn tất cả bộ lọc khác |
-| 3 | **Quét mẫu nguy hiểm khi đăng ký** | Từ chối file chứa `__`, `class`, `mro`, `subclasses`, `globals`, `builtins`, `import`, `eval`, `exec`, `open`, `os.`, `sys.`, `config`, `self`, `request`, `lipsum`, `cycler`, `namespace` → `COCAS-6014` |
+| 3 | ⭐ **Quét khi đăng ký — theo hình dạng AST, blacklist chỉ là lớp phụ** | Xem §9.9.1. Chốt chặn chính là 5 luật trên AST; blacklist chuỗi vẫn giữ nhưng **chỉ quét thân thẻ Jinja2**, tuyệt đối không quét XML thô |
 | 4 | **Giới hạn tài nguyên khi render** | Timeout 10 giây · giới hạn số vòng lặp 1000 · giới hạn kích thước output 50 MB |
 | 5 | **Ghi nhật ký mọi thao tác template** | `TEMPLATE_REGISTERED`, `TEMPLATE_VERSION_ACTIVATED` kèm SHA-256 của file |
 | 6 | **Cấm `{% include %}` / `{% extends %}` / `{% import %}`** | Chống đọc file tuỳ ý qua template |
 | 7 | ⭐ **Ngữ cảnh chỉ chứa kiểu nguyên thuỷ** | **Không bao giờ** đưa đối tượng ORM, `Settings`, hay bất kỳ đối tượng có thuộc tính riêng nào vào ngữ cảnh. Chỉ `str`, `int`, `float`, `bool`, `date`, `list`, `dict`, `RichText` |
 
 > ⭐ **Biện pháp #7 là quan trọng nhất.** Ngay cả khi sandbox bị vượt qua, nếu ngữ cảnh chỉ chứa chuỗi và số thì kẻ tấn công không có "bàn đạp" nào để leo lên đối tượng hệ thống. Đây là phòng thủ theo chiều sâu đúng nghĩa.
+
+### ⭐ 9.9.1. Vì sao blacklist chuỗi **không được** quét XML thô
+
+> 🔴 **Đo 2026-08-11: áp đúng biện pháp #3 bản D2.0 lên XML đã vá của `01A_HD_GDN.docx` và `01A_HD_GDKQ.docx` thì CẢ HAI ĐỀU BỊ TỪ CHỐI.**
+
+Từ khoá vướng là `open`, và nó không nằm trong bất kỳ thẻ Jinja2 nào — nó nằm trong **không gian tên bắt buộc của chính định dạng**:
+
+```
+<w:body xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" …>
+                                     ^^^^^^^^^^^^^^^^
+```
+
+`01A_HD_GDN.docx`: 101 lần khớp · `01A_HD_GDKQ.docx`: 15 lần. Đây **không phải** chuyện hai file này xui — mọi `.docx` tồn tại trên đời đều mang chuỗi `openxmlformats.org`. Biện pháp #3 hiểu theo nghĩa đen là một cổng chặn **luôn đóng**: tỉ lệ từ chối 100%, kể cả file sạch.
+
+Đo lại khi **chỉ quét thân các thẻ `{{ … }}` / `{% … %}`**: `01A_HD_GDN.docx` 16 thẻ → **0** khớp; `01A_HD_GDKQ.docx` 11 thẻ → **0** khớp.
+
+**Năm luật trên AST là chốt chặn chính** (blacklist chỉ còn là lưới thứ hai):
+
+| # | Luật | Chặn được |
+|---|---|---|
+| 1 | `Getattr` có `attr` bắt đầu bằng `_` | `''.__class__.__mro__` · `self._TemplateReference__context` |
+| 2 | `Getitem` với hằng chuỗi bắt đầu bằng `_` | `''['__class__']` — đường vòng qua luật 1 |
+| 3 | **Mọi** nút `Call` | `.__subclasses__()` · `config.items()` · `lipsum.__globals__[…].popen(…)` — mẫu hợp đồng v1.0 không có lý do gì để gọi hàm |
+| 4 | `Name` thuộc tập toàn cục Jinja2 (`self` `config` `request` `lipsum` `cycler` `namespace` `joiner` `range` `dict` `lipsum`…) | Bàn đạp leo thang, kể cả khi không gọi hàm |
+| 5 | `Include` · `Extends` · `Import` · `FromImport` · bộ lọc ngoài danh sách trắng #2 | V-TPL-004 (đọc file tuỳ ý) và bộ lọc `attr`/`map` |
+
+⚠️ **Bộ phân tích cú pháp sẽ KHÔNG cứu ta.** Đã đo: cả 6 payload SSTI (`{{ ''.__class__.__mro__[1].__subclasses__() }}`, `{{ config.items() }}`, `{{ lipsum.__globals__['os'].popen('calc').read() }}`, `{{ self._TemplateReference__context }}`, `{{ namespace() }}`, `{{ ''['__class__'] }}`) đều **phân tích sạch**, không một cảnh báo. Nếu không có luật quét thì chúng đi thẳng tới `SandboxedEnvironment` — nơi duy nhất còn chặn.
+
+⚠️ **Luật 1 phải soi `attr`, không soi `Name`.** `{{ ''.__class__ }}` **không có nút `Name` nào** — gốc của nó là hằng chuỗi rỗng. Một bộ quét chỉ nhìn tên biến sẽ cho payload này qua.
 
 ---
 
@@ -351,7 +387,7 @@ graph TB
 
 | Nơi | Thay đổi |
 |---|---|
-| Port | ⭐ **Bỏ Port 13 `IPdfConverter`** (§12.12). Còn **18 Port**, đánh số 1–19 **khuyết số 13** — giữ số cũ để mọi trích dẫn hiện có không lệch |
+| Port | ⭐ **Bỏ Port 13 `IPdfConverter`** (§12.12), đánh số **khuyết 13** — giữ số cũ để mọi trích dẫn hiện có không lệch. *(P3 module 3 thêm Port 20 `ITemplateInspector` → tổng **19 Port**, đánh số 1–20; xem §12.19.2)* |
 | `ContractStatus` | 9 → **6 giá trị**: bỏ `DOCX_READY`, `PDF_CONVERTING`, `PDF_FAILED` (§4.3.3) |
 | `JobType` | Bỏ `PDF_CONVERT` — còn 5 |
 | `DocType` | Chỉ còn `DOCX` |

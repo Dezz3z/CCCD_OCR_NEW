@@ -18,6 +18,7 @@ from cocas.domain.ports.crypto import ICryptoService
 from cocas.domain.ports.system import IClock, IIdGenerator
 from cocas.domain.services.field_normalizer import FieldNormalizer
 from cocas.domain.services.issue_place_normalizer import IssuePlaceNormalizer
+from cocas.infrastructure.documents.template_inspector import DocxTemplateInspector
 from cocas.infrastructure.logging.loguru_config import configure_logging
 from cocas.infrastructure.ocr.channels.mrz_reader import Td1MrzReader
 from cocas.infrastructure.ocr.channels.qr_decoder import ZxingQrDecoder
@@ -99,6 +100,14 @@ class Container:
             normalizer=self.field_normalizer,
             clock=self.clock,
         )
+
+        # ---- Documents (P3 module 3+) ------------------------------------
+        #
+        # ⭐ Port 20. Safe to share for the process lifetime: it holds only a
+        # Jinja2 `Environment` used for `parse()`, keeps no per-file state,
+        # and — unlike the OCR engine — needs no warm-up, because it never
+        # renders and so never loads anything.
+        self.template_inspector = DocxTemplateInspector()
 
     def unit_of_work(self) -> SqlAlchemyUnitOfWork:
         """A fresh `IUnitOfWork` per call — one transaction, one `async with` block (§12.14)."""

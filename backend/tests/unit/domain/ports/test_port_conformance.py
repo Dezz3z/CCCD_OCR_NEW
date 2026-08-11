@@ -3,13 +3,13 @@
 *"Mỗi Port phải có ít nhất một hiện thực fake/null dùng trong test. Đây là
 tiêu chí nghiệm thu kiến trúc."*
 
-This module is that criterion, executable: it asserts all 18 ports exist and
+This module is that criterion, executable: it asserts all 19 ports exist and
 that each has a conforming fake. Add a port without a fake and
-`test_all_18_ports_have_a_fake` fails.
+`test_all_19_ports_have_a_fake` fails.
 
-⭐ 18 ports numbered **1–19 with 13 missing**: D2.1 removed `IPdfConverter`
-(§9.13) and the numbering deliberately keeps the gap so existing §12.1x
-citations still point at the same modules.
+⭐ 19 ports numbered **1–20 with 13 missing**: D2.1 removed `IPdfConverter`
+(§9.13) and P3 module 3 added `ITemplateInspector` as 20 rather than reusing
+the gap, so existing §12.1x citations still point at the same modules.
 """
 from __future__ import annotations
 
@@ -34,6 +34,7 @@ from cocas.domain.ports import (
     IQrDecoder,
     IReadRepository,
     IRegionRecognizer,
+    ITemplateInspector,
     IUnitOfWork,
     IWriteRepository,
 )
@@ -47,6 +48,7 @@ from tests.fixtures.fake_ports import (
     FakeMrzReader,
     FakeOcrEngine,
     FakeQrDecoder,
+    FakeTemplateInspector,
     FakeUnitOfWork,
     FrozenClock,
     InMemoryFileStorage,
@@ -79,14 +81,16 @@ PORT_FAKES: list[tuple[int, type, object]] = [
     (17, IIdGenerator, SequentialIdGenerator()),
     (18, ICryptoService, NullCryptoService()),
     (19, IDocumentTypeSelector, FakeDocumentTypeSelector()),
+    (20, ITemplateInspector, FakeTemplateInspector()),
 ]
 
 
 class TestPortConformance:
-    def test_all_18_ports_have_a_fake(self) -> None:
-        assert len(PORT_FAKES) == 18
-        # ⭐ 1–19 with 13 vacant (D2.1 removed IPdfConverter, §9.13).
-        assert [n for n, _, _ in PORT_FAKES] == [n for n in range(1, 20) if n != 13]
+    def test_all_19_ports_have_a_fake(self) -> None:
+        assert len(PORT_FAKES) == 19
+        # ⭐ 1–20 with 13 vacant (D2.1 removed IPdfConverter, §9.13; P3
+        # module 3 added ITemplateInspector as 20, not as a reused 13).
+        assert [n for n, _, _ in PORT_FAKES] == [n for n in range(1, 21) if n != 13]
 
     @pytest.mark.parametrize(
         ("number", "port", "fake"),

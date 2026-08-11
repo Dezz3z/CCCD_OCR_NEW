@@ -319,13 +319,15 @@ A B C D E F G H I J K L M N O P Q R S T U V W X Y Z
 | Mã | Quy tắc | Mức | Mã lỗi API |
 |---|---|---|---|
 | `V-TPL-001` | File là DOCX hợp lệ (magic bytes `PK\x03\x04` + có `word/document.xml`) | 🔴 | `COCAS-6002` |
-| `V-TPL-002` | Cú pháp Jinja2 hợp lệ | 🔴 | `COCAS-6003` (kèm số dòng) |
-| `V-TPL-003` | ⭐ Không chứa cấu trúc nguy hiểm (`__`, `class`, `mro`, `globals`, `import`, `eval`, `lipsum`…) | 🔴 | `COCAS-6014` |
+| `V-TPL-002` | Cú pháp Jinja2 hợp lệ | 🔴 | `COCAS-6003` (⭐ kèm **số thứ tự đoạn văn**, §12.8.3) |
+| `V-TPL-003` | ⭐ Không chứa cấu trúc nguy hiểm — 5 luật trên **AST**, blacklist chuỗi chỉ quét **thân thẻ Jinja2** (§9.9.1) | 🔴 | `COCAS-6014` |
 | `V-TPL-004` | Không dùng `{% include %}` / `{% extends %}` / `{% import %}` | 🔴 | `COCAS-6014` |
-| `V-TPL-005` | ⭐ Biến khai báo `render_style` phải viết dạng `{{r var }}` | 🟡 | `COCAS-6008` |
+| `V-TPL-005` | ⭐ Biến khai báo `render_style` phải viết dạng `{{r var }}` — kiểm trên **văn bản**, không trên AST (§12.8.2) | 🟡 | `COCAS-6008` |
 | `V-TPL-006` | Biến không có trong từ điển → cảnh báo, không chặn | 🟡 | `COCAS-6009` |
 | `V-TPL-007` | Chứa placeholder ảnh (`{%p %}`) → cảnh báo (v1.0 không nhúng ảnh) | 🟡 | `COCAS-6010` |
-| `V-TPL-008` | ⭐ `party_schema` chỉ dùng tính năng đã hỗ trợ ở v1.0 (`entity_type=INDIVIDUAL`, `min=max=1`) | 🔴 | `COCAS-6016` |
+| `V-TPL-008` | ⭐ `party_schema` chỉ dùng tính năng đã hỗ trợ ở v1.0 (`entity_type=INDIVIDUAL`, `min=max=1`, `collect ⊆ {contact, bank_account}`) | 🔴 | `COCAS-6016` |
+
+> ⚠️ **`V-TPL-003` bản D2.0 là một cổng chặn luôn đóng.** Quét blacklist trên XML thô khớp `open` trong `openxmlformats.org` — không gian tên bắt buộc của **mọi** `.docx`. Đo trên 2 mẫu thật: 101 và 15 lần khớp, tức là từ chối 100% file sạch. Chi tiết và cách sửa: §9.9.1.
 
 ---
 

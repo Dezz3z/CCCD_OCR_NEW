@@ -28,7 +28,8 @@ cocas/
 │   │   │   ├── services/             #    IssuePlaceNormalizer · FieldFusionService
 │   │   │   │                         #    CardValidityPolicy · ContractNumberGenerator
 │   │   │   │                         #    ExportNameGenerator
-│   │   │   ├── ports/                # ⭐ 18 interface — điểm thay thế mọi hạ tầng
+│   │   │   ├── ports/                # ⭐ 19 interface — điểm thay thế mọi hạ tầng
+│   │   │   │                         #    (đánh số 1–20, khuyết 13)
 │   │   │   ├── events/               #    OcrCompleted · ContractGenerated · ...
 │   │   │   ├── validation/           #    Rule objects · rule registry · RuleContext
 │   │   │   └── exceptions.py         #    Cây ngoại lệ nghiệp vụ
@@ -60,7 +61,7 @@ cocas/
 │   │   │   │   │                     #    null_adapter.py
 │   │   │   │   └── extraction/       #    zone_and_anchor_extractor.py
 │   │   │   ├── documents/
-│   │   │   │   ├── template_inspector.py
+│   │   │   │   ├── template_inspector.py     # ⭐ Port 20 — AST Jinja2 + quét marker
 │   │   │   │   ├── docx_context_adapter.py   # ⭐ StyledValue → docxtpl.RichText
 │   │   │   │   ├── docx_renderer.py
 │   │   │   ├── storage/              #    encrypted_file_vault.py · path_guard.py
