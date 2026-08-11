@@ -238,7 +238,9 @@ Hai chiến lược chạy song song, lấy kết quả có confidence cao hơn 
 
 ### S9 — Chuẩn hoá
 
-#### Quy tắc Nơi cấp — 4 tầng
+#### Quy tắc Nơi cấp — 5 tầng
+
+⭐ Tầng 5 bổ sung 2026-08-11; **số tầng là nhãn nguồn gốc, thứ tự chạy như sơ đồ dưới**. Đặc tả đầy đủ + số đo: §12.5.1.
 
 ```
 Đầu vào thô
@@ -254,6 +256,14 @@ Hai chiến lược chạy song song, lấy kết quả có confidence cao hơn 
    ├─ Tầng 2: Khớp bí danh (bảng `normalization_alias`) → conf theo alias
    │    ⭐ Admin thêm alias mới qua UI, KHÔNG cần sửa code
    │
+   ├─ ⭐ Tầng 5: Hình dạng — CHỮ ĐẦU, không đọc toàn chuỗi
+   │    3 ký tự đầu (bỏ token đầu < 2 ký tự)
+   │      "CUC…" → CỤC CẢNH SÁT...      "BOC…" → BỘ CÔNG AN
+   │    + xác nhận bằng độ dài TỪ ĐẦU TIÊN: "BỘ" 2 ký tự / "CỤC" ≥3
+   │      đồng thuận → conf 0.92   ·   chỉ chữ đầu → conf 0.85
+   │    Không rõ chữ đầu → sang Tầng 3
+   │    ⚠️ Đo 22/22 đúng; 752 dòng khác trên cùng bộ ảnh → 0 phán quyết
+   │
    ├─ Tầng 3: Khớp mờ (token_set_ratio trên chuỗi bỏ dấu)
    │    ≥ 85       → chấp nhận, conf 0.90
    │    70 ≤ x <85 → chấp nhận + cờ NEEDS_REVIEW, conf 0.65
@@ -265,6 +275,8 @@ Hai chiến lược chạy song song, lấy kết quả có confidence cao hơn 
         Không khớp → NULL + cờ ISSUE_PLACE_UNRECOGNIZED
                      → UI hiện dropdown 2 lựa chọn, BẮT BUỘC chọn
 ```
+
+⚠️ **Tầng 3 và 4 hỏng cùng một chỗ, nên chúng không phải hai đường dự phòng độc lập.** Bộ nhận dạng dính chữ (`CUCTRUONG CUCCANH SAT`) làm giao của `token_set_ratio` rỗng **và đồng thời** làm mất token `CUC` mà tầng 4 đòi phải có đủ — đo được **8/22 ảnh không ra giá trị nào** trước khi có tầng 5. Đây là lý do tầng 5 chạy trước cả hai.
 
 ⭐ **Bất biến:** hệ thống **không bao giờ** lưu giá trị Nơi cấp ngoài 2 giá trị chuẩn. Cưỡng chế ở **3 tầng**: Value Object `IssuePlace` (Domain) · Pydantic `Literal` (API) · `CHECK` constraint (CSDL). Giá trị thô lưu riêng ở `ocr_field.raw_value_enc` phục vụ cải tiến.
 

@@ -534,13 +534,28 @@ Thuật toán đầy đủ: [03-luong-du-lieu.md §S9](03-luong-du-lieu.md#s9--c
 | **Bất biến** | `value is None` ⇒ `confidence = 0.0` — giống hệt `FusedField`, để giá trị bị loại không mang trọng số vào hợp nhất |
 | **Không được làm** | ❌ Cho giá trị thô "lọt" qua khi chuẩn hoá thất bại. Hợp nhất không phân biệt được thô với chuẩn, nên một giá trị thô sống sót sẽ bị chấm như một sự bất đồng thật |
 
-### 7.5.1. `IssuePlaceNormalizer` — 4 tầng
+### 7.5.1. `IssuePlaceNormalizer` — 5 tầng
 
-Chi tiết thuật toán: xem [03-luong-du-lieu.md §S9](03-luong-du-lieu.md#s9--chuẩn-hoá).
+Chi tiết thuật toán: xem [03-luong-du-lieu.md §S9](03-luong-du-lieu.md#s9--chuẩn-hoá) · đặc tả tầng 5: [12-dac-ta-module.md §12.5.1](12-dac-ta-module.md).
 
 ⭐ **Cam kết bất biến:** service này **chỉ trả về `None` hoặc một trong 2 giá trị chuẩn**. Không có đường nào để giá trị thứ ba lọt ra.
 
 **Test bắt buộc (property-based):** với **mọi** chuỗi đầu vào bất kỳ, kết quả luôn thuộc tập 3 giá trị cho phép.
+
+⭐ **`issue_place` là trường DUY NHẤT không kênh chính xác nào đọc được** — QR trả 4 trường, MRZ TD1 trả 3, không kênh nào mang tên cơ quan cấp. Năm trường kia luôn có ít nhất một chỗ dựa chính xác; trường này phụ thuộc 100% vào OCR. Đó là lý do nó cần một tầng mà bốn tầng so khớp toàn chuỗi không cung cấp được.
+
+**Tầng 5 (bổ sung 2026-08-11) — phân biệt bằng chữ đầu.** Trường này là *chọn 1 trong 2*, không phải chuỗi cần đọc: `BỘ CÔNG AN` mở đầu bằng `BOC`, `CỤC TRƯỞNG CỤC CẢNH SÁT…` mở đầu bằng `CUC`. Đo trên 46 ảnh thật (22 ảnh có trường này), với đủ 19 dòng alias thật đã gieo:
+
+| Tầng | Đúng | Confidence |
+|---|---|---|
+| 3 (fuzzy toàn chuỗi) | 13/22 | 0.65 |
+| 4 (từ khoá) | 1/22 | 0.60 |
+| **cả hai đều im lặng** | **8/22** | — |
+| ⭐ **5 (hình dạng)** | **22/22** | **0.92** |
+
+Toàn chuỗi S3→S11 sau khi thêm tầng 5: `issue_place` **20/20 thẻ** (trước: 12/20), độ tin cậy trung bình **0.89** (trước 0.60), số ô phải review **1** (trước 12), số thẻ bị chặn **5/20** (trước 10/20). Đo lại: `python backend/scripts/verify_extraction.py "<thư mục ảnh>"`.
+
+⚠️ **Tín hiệu độ dài toàn chuỗi KHÔNG dùng được** dù hai giá trị chuẩn chênh nhau gần 5 lần: vùng 2021 cắt cụt tên cơ quan còn 19 ký tự, vùng 2024 nuốt thêm dòng tiếng Anh thành 31 — chồng lấn và ngược chiều. Chi tiết + ngưỡng: §12.5.1.
 
 ### 7.5.2. `FieldFusionService` — 8 quy tắc
 

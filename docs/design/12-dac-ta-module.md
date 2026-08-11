@@ -93,7 +93,7 @@
 
 ---
 
-## 12.5. `IssuePlaceNormalizer` — Chuẩn hoá 4 tầng
+## 12.5. `IssuePlaceNormalizer` — Chuẩn hoá 5 tầng
 
 | Mục | Nội dung |
 |---|---|
@@ -101,13 +101,48 @@
 | **Trách nhiệm** | Đưa chuỗi thô về đúng 1 trong 2 giá trị chuẩn, hoặc `None` |
 | **Phương thức** | `normalize(raw: str) -> NormalizationOutcome` |
 | **Phụ thuộc** | `alias_repository: IAliasRepository` (nạp `normalization_alias`, có cache) |
-| **Tiền điều kiện** | `raw` là chuỗi (có thể rỗng) |
+| **Tiền điều kiện** | `raw` là chuỗi (có thể rỗng) — ⭐ và là **văn bản của vùng nơi cấp**, không phải văn bản bất kỳ (xem tầng 5) |
 | **Hậu điều kiện** | `outcome.value ∈ {"BỘ CÔNG AN", "CỤC CẢNH SÁT QUẢN LÝ HÀNH CHÍNH VỀ TRẬT TỰ XÃ HỘI", None}` |
 | **Bất biến** | ⭐ **Không tồn tại đường nào trả về giá trị thứ ba.** Đây là bất biến quan trọng nhất của module |
-| **Thuật toán** | Tầng 0 tiền chuẩn hoá → Tầng 1 khớp chính xác (bỏ dấu) → Tầng 2 tra alias → Tầng 3 fuzzy `token_set_ratio` → Tầng 4 từ khoá → `None` |
-| **Đầu ra** | `NormalizationOutcome{ value, confidence, tier (0..4), matched_alias_id }` |
-| **Bảng confidence** | Tầng 1 → 1.00 · Tầng 2 → theo `alias.assigned_confidence` · Tầng 3 ≥85 → 0.90, 70–85 → 0.65 · Tầng 4 → 0.60 · Không khớp → 0.00 |
+| **Thuật toán** | Tầng 0 tiền chuẩn hoá → Tầng 1 khớp chính xác (bỏ dấu) → Tầng 2 tra alias → ⭐ **Tầng 5 hình dạng (chữ đầu)** → Tầng 3 fuzzy `token_set_ratio` → Tầng 4 từ khoá → `None` |
+| **Đầu ra** | `NormalizationOutcome{ value, confidence, tier (0..5), matched_alias_id }` |
+| **Bảng confidence** | Tầng 1 → 1.00 · Tầng 2 → theo `alias.assigned_confidence` · ⭐ Tầng 5 → 0.92 (có độ dài từ đầu xác nhận) / 0.85 (chỉ chữ đầu) · Tầng 3 ≥85 → 0.90, 70–85 → 0.65 · Tầng 4 → 0.60 · Không khớp → 0.00 |
 | **Test bắt buộc** | ⭐ Property test: với **mọi** chuỗi đầu vào bất kỳ, kết quả luôn thuộc tập 3 giá trị cho phép |
+
+### ⭐ 12.5.1. Tầng 5 — phân biệt bằng chữ đầu (`issue_place_shape.py`)
+
+> Bổ sung 2026-08-11 sau khi đo trên 46 ảnh thật. **Số tầng là nhãn nguồn gốc, không phải thứ tự chạy:** tầng 5 chạy **trước** tầng 3 và 4, giữ số 5 để không phải đánh số lại 4 tầng cũ trong mã nguồn, test và tài liệu.
+
+**Vì sao cần một tầng nữa.** `issue_place` là trường **duy nhất không kênh chính xác nào đọc được** — QR trả 4 trường (`id_number`, `full_name`, `date_of_birth`, `issue_date`), MRZ TD1 trả 3 (`id_number`, `date_of_birth`, `expiry_date`), không kênh nào mang tên cơ quan cấp. Nó phụ thuộc 100% vào OCR, là kênh yếu nhất.
+
+**Ý tưởng.** Trường này là **chọn 1 trong 2**, không phải chuỗi cần đọc. Bốn tầng cũ đều so khớp **toàn bộ** chuỗi với một danh mục cách viết — đúng cho trường mở, sai cho trường đóng: nó khiến câu trả lời phụ thuộc vào việc bộ nhận dạng đọc đúng bao nhiêu phần của một tên cơ quan 23 ký tự, trong khi chỉ cần **phần mở đầu**.
+
+| Giá trị chuẩn | Thẻ in ra | 3 chữ đầu |
+|---|---|---|
+| `BỘ CÔNG AN` | `BỘ CÔNG AN` (Căn cước 2024) | `BOC` |
+| `CỤC CẢNH SÁT QUẢN LÝ HÀNH CHÍNH VỀ TRẬT TỰ XÃ HỘI` | `CỤC TRƯỞNG CỤC CẢNH SÁT…` (CCCD 2021) | `CUC` |
+
+**Đo 2026-08-11 trên 46 ảnh thật (22 ảnh có trường này):**
+
+| Tầng | Đúng | Confidence |
+|---|---|---|
+| 3 (fuzzy toàn chuỗi) | 13/22 | 0.65 · 1 ca 0.90 |
+| 4 (từ khoá) | 1/22 | 0.60 |
+| **cả hai đều im lặng — không ra giá trị nào** | **8/22** | — |
+| ⭐ **5 (hình dạng)** | **22/22** | **0.92** |
+
+⚠️ **Tầng 3 và 4 không phải hai đường dự phòng độc lập — chúng hỏng cùng một chỗ.** Bộ nhận dạng dính chữ (`CUCTRUONG CUCCANH SAT`), làm giao của `token_set_ratio` rỗng **và đồng thời** làm mất token `CUC` mà tầng 4 đòi có đủ. Một lỗi, hai tầng chết. Tầng 5 chỉ cần chữ đầu, phép dính chữ không đụng tới.
+
+**Hai tín hiệu:**
+
+1. **Chữ đầu** (quyết định) — 3 ký tự đầu, so với phần mở đầu của mỗi giá trị chuẩn cắt cùng độ dài. Bỏ token đầu ngắn hơn 2 ký tự trước khi lấy (`S CUC TRUONG…` — mảnh `S` là nhiễu; `BỘ`/`CỤC` không bao giờ dài 1 ký tự).
+2. **Độ dài từ đầu tiên** (xác nhận) — `BỘ` 2 ký tự, `CỤC` 3 ký tự trở lên. Đồng thuận → 0.92; nghịch → 0.85, chữ đầu vẫn thắng.
+
+⚠️ **Tín hiệu "độ dài toàn chuỗi" KHÔNG dùng được, dù trên giấy nó áp đảo.** Hai giá trị chuẩn chênh nhau gần 5 lần (8 ký tự / 38 ký tự). Nhưng trên văn bản **thực sự đến được** hàm này thì khoảng cách biến mất: vùng 2021 chỉ bắt được dòng đầu của tên cơ quan (`CỤC TRƯỞNG CỤC CẢNH SÁT`, 19 ký tự), còn vùng 2024 nuốt luôn dòng tiếng Anh bên dưới (`BO CONGAN MINISTRY OF PUBLIC SECURITY`, 31 ký tự). Đo được: 2021 = 19–20, 2024 = 15 và 31 — **chồng lấn, và ngược chiều**. Độ dài là thuộc tính của **vùng cắt**, không phải của trường.
+
+**Độ chính xác của ngưỡng.** `fuzz.ratio` trên 3 ký tự chỉ trả về được {0, 33.3, 66.7, 100}, nên ngưỡng 80 trên thực tế nghĩa là "chữ đầu khớp chính xác". Giữ dạng ngưỡng thay vì so bằng để `HEAD_LEN` còn chỉnh được. Quét **752 dòng còn lại** của 46 ảnh qua đúng phép thử này: **0 dòng ra phán quyết**. Ca sát nhất là dòng quê quán `Bố Trạch, Quảng Bình` → `BOT` được 66.7 điểm với `BOC` — đây chính là con số mà ngưỡng 80 phải nằm trên.
+
+⚠️ **Tầng 5 cố ý cả tin:** nó giả định văn bản nhận được **là** nơi cấp và chỉ quyết định *cái nào*. Đó là lý do tiền điều kiện của module nói rõ đầu vào phải là văn bản vùng nơi cấp.
 
 ---
 

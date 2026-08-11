@@ -20,6 +20,7 @@ from cocas.domain.services.field_fusion_service import (
 )
 from cocas.domain.services.field_normalizer import FieldNormalizer, NormalizedValue
 from cocas.domain.services.issue_place_normalizer import IssuePlaceNormalizer, NormalizationOutcome
+from cocas.domain.services.issue_place_shape import ShapeVerdict, discriminate
 
 __all__ = [
     "FIELD_WEIGHTS",
@@ -37,4 +38,6 @@ __all__ = [
     "IssuePlaceNormalizer",
     "NormalizationOutcome",
     "NormalizedValue",
+    "ShapeVerdict",
+    "discriminate",
 ]

@@ -1,4 +1,4 @@
-"""Tests for IssuePlaceNormalizer (§12.5) — the 4-tier normalizer."""
+"""Tests for IssuePlaceNormalizer (§12.5) — the 5-tier normalizer."""
 import uuid
 
 import pytest
@@ -27,6 +27,14 @@ _SEED_ALIASES = [
         match_tier=2,
         assigned_confidence=0.90,
         alias_normalized="B CONG AN",
+    ),
+    AliasRecord(
+        id=uuid.uuid4(),
+        field_key="issue_place",
+        canonical_value=BO_CONG_AN,
+        match_tier=2,
+        assigned_confidence=0.90,
+        alias_normalized="BO CONGAN",
     ),
     AliasRecord(
         id=uuid.uuid4(),
@@ -130,6 +138,63 @@ class TestTier4Keyword:
         assert outcome.value == BO_CONG_AN
         assert outcome.tier == 4
         assert outcome.confidence == 0.60
+
+
+class TestTier5Shape:
+    """⭐ The opening-letters tier, and where it sits in the order."""
+
+    async def test_the_line_the_2021_card_actually_prints(self) -> None:
+        """⭐ The reading that used to come back empty.
+
+        `CỤC TRƯỞNG CỤC CẢNH SÁT` is what 18 of the 22 photos carrying this
+        field produce. It is not a canonical value, not a seeded alias, and its
+        merged variants defeat both whole-string tiers.
+        """
+        outcome = await _make_normalizer().normalize("CUC TRUONG CUC CANH SAT")
+        assert outcome.value == CUC_CANH_SAT_QLHC_TTXH
+        assert outcome.tier == 5
+        assert outcome.confidence == 0.92
+
+    async def test_merged_tokens_that_defeat_tiers_3_and_4(self) -> None:
+        outcome = await _make_normalizer().normalize("CUCTRUONG CUCCANH SAT")
+        assert outcome.value == CUC_CANH_SAT_QLHC_TTXH
+        assert outcome.tier == 5
+
+    async def test_clears_the_review_threshold(self) -> None:
+        """The point of the whole tier: 0.92 > fusion's 0.85, so the field
+        stops arriving pre-flagged for manual review on every single card."""
+        from cocas.domain.services.field_fusion_service import DEFAULT_REVIEW_THRESHOLD
+
+        outcome = await _make_normalizer().normalize("CUC TRUONG CUC CANH SAT")
+        assert outcome.confidence >= DEFAULT_REVIEW_THRESHOLD
+
+    async def test_tier_1_still_wins(self) -> None:
+        outcome = await _make_normalizer().normalize(BO_CONG_AN)
+        assert outcome.tier == 1
+        assert outcome.confidence == 1.0
+
+    async def test_curated_alias_beats_the_heuristic_even_when_it_scores_lower(self) -> None:
+        """⭐ `BO CONGAN` is a seeded tier-2 alias at 0.90 and also a perfect
+        head match worth 0.92. The exact alias wins anyway: a curated row is a
+        statement about this specific string, the head is an inference about
+        every string starting the same way."""
+        outcome = await _make_normalizer().normalize("BO CONGAN")
+        assert outcome.tier == 2
+        assert outcome.confidence == 0.90
+
+    async def test_shape_runs_before_the_whole_string_tiers(self) -> None:
+        # Tier 3 would reach this via `CUC CS QLHC VE TTXH`; tier 5 gets there
+        # first and with a higher score.
+        outcome = await _make_normalizer().normalize("CUC CS QLHC VE TTX")
+        assert outcome.value == CUC_CANH_SAT_QLHC_TTXH
+        assert outcome.tier == 5
+
+    async def test_no_head_signal_falls_through_to_the_lower_tiers(self) -> None:
+        outcome = await _make_normalizer().normalize(
+            "TRICH YEU NOI DUNG KHONG RO RANG NHUNG CO NHAC DEN BO CONG AN O DAY"
+        )
+        assert outcome.value == BO_CONG_AN
+        assert outcome.tier in (3, 4)
 
 
 class TestNoMatch:

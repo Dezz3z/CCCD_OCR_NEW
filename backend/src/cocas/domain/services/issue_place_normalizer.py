@@ -1,24 +1,46 @@
-"""IssuePlaceNormalizer — 4-tier normalization to the 2 canonical issue places (§12.5).
+"""IssuePlaceNormalizer — 5-tier normalization to the 2 canonical issue places (§12.5).
 
 ⭐ The single most important invariant in this file: `normalize()` can only
 ever return one of the two canonical strings, or `None`. There is no third
 value, no matter what garbage comes in — tested exhaustively below with a
 Hypothesis property test.
 
-Tier order, as specified:
+Evaluation order:
   Tier 1 — exact match after diacritics are stripped (no repository call)
   Tier 2 — exact match against `normalization_alias.alias_normalized`
+  ⭐ Tier 5 — shape: which of the 2 the opening letters point at (`issue_place_shape`)
   Tier 3 — fuzzy match (`rapidfuzz.fuzz.token_set_ratio`) against the same aliases
   Tier 4 — keyword match against `match_tier=4` alias rows (all keywords present)
   no match — `None`, confidence 0.0
+
+⚠️ **Tier 5 is numbered after tiers 3 and 4 but runs before them, and that is
+deliberate.** The number is the provenance label a result carries to the UI and
+the log; the order is what measurement dictates. Measured 2026-08-10 on the 22
+real photos carrying this field, with all 16 seeded alias rows loaded:
+
+| Tier | Correct | Confidence |
+|---|---|---|
+| 3 (fuzzy, whole string) | 13/22 | 0.65 · one at 0.90 |
+| 4 (keywords) | 1/22 | 0.60 |
+| **neither — no value at all** | **8/22** | — |
+| ⭐ 5 (shape) | **22/22** | 0.92 |
+
+The 8 failures are one defect seen twice: the recognizer merges words
+(`CUCTRUONG CUCCANH SAT`), which empties `token_set_ratio`'s intersection and
+breaks the keyword tier's all-present test at the same time. Both whole-string
+tiers depend on the same token boundaries, so they fail *together* — they are
+not the independent fallbacks the tier ladder implies. Tier 5 needs only the
+first letters, which no merge disturbs.
 """
 from __future__ import annotations
 
+from collections.abc import Sequence
 from dataclasses import dataclass
 
 from rapidfuzz import fuzz
 
 from cocas.domain.ports.persistence import AliasRecord, IAliasRepository
+from cocas.domain.services.issue_place_shape import discriminate
 from cocas.domain.value_objects._vn_text import collapse_whitespace, nfc_upper, strip_diacritics
 from cocas.domain.value_objects.issue_place import (
     BO_CONG_AN,
@@ -55,7 +77,7 @@ class NormalizationOutcome:
 
 
 class IssuePlaceNormalizer:
-    """Domain Service — see module docstring for the 4-tier algorithm."""
+    """Domain Service — see module docstring for the 5-tier algorithm."""
 
     def __init__(self, alias_repository: IAliasRepository, document_type_code: str = "CCCD_CHIP") -> None:
         self._alias_repository = alias_repository
@@ -83,7 +105,31 @@ class IssuePlaceNormalizer:
                     matched_alias_id=alias.id,
                 )
 
-        # Tier 3 — fuzzy match against every diacritics-stripped alias.
+        # ⭐ Tier 5 — the opening letters, before either whole-string tier gets a
+        # turn. Both of those need the recognizer to have found the right word
+        # boundaries; this one does not, and on the sample it is right where they
+        # are silent (see the table in the module docstring).
+        verdict = discriminate(raw)
+        if verdict.value is not None:
+            return NormalizationOutcome(value=verdict.value, confidence=verdict.confidence, tier=5)
+
+        return (
+            self._fuzzy_match(stripped, exact_candidates)
+            or self._keyword_match(stripped, aliases)
+            or NormalizationOutcome(value=None, confidence=0.0, tier=0)
+        )
+
+    @staticmethod
+    def _fuzzy_match(
+        stripped: str, exact_candidates: list[AliasRecord]
+    ) -> NormalizationOutcome | None:
+        """Tier 3 — fuzzy match against every diacritics-stripped alias.
+
+        ⚠️ Depends on the recognizer having found the right word boundaries:
+        `token_set_ratio` compares *sets of tokens*, so a merge like
+        `CUCTRUONG CUCCANH SAT` empties the intersection and scores 56 on text
+        a human reads at a glance. That is why tier 5 runs ahead of it.
+        """
         best_alias: AliasRecord | None = None
         best_score = 0.0
         for alias in exact_candidates:
@@ -93,28 +139,35 @@ class IssuePlaceNormalizer:
             if score > best_score:
                 best_score = score
                 best_alias = alias
-        if best_alias is not None and best_score >= _FUZZY_LOW_THRESHOLD:
-            confidence = (
-                _FUZZY_HIGH_CONFIDENCE if best_score >= _FUZZY_HIGH_THRESHOLD else _FUZZY_LOW_CONFIDENCE
-            )
-            return NormalizationOutcome(
-                value=best_alias.canonical_value,
-                confidence=confidence,
-                tier=3,
-                matched_alias_id=best_alias.id,
-            )
+        if best_alias is None or best_score < _FUZZY_LOW_THRESHOLD:
+            return None
+        confidence = (
+            _FUZZY_HIGH_CONFIDENCE if best_score >= _FUZZY_HIGH_THRESHOLD else _FUZZY_LOW_CONFIDENCE
+        )
+        return NormalizationOutcome(
+            value=best_alias.canonical_value,
+            confidence=confidence,
+            tier=3,
+            matched_alias_id=best_alias.id,
+        )
 
-        # Tier 4 — every keyword present, in any order.
+    @staticmethod
+    def _keyword_match(
+        stripped: str, aliases: Sequence[AliasRecord]
+    ) -> NormalizationOutcome | None:
+        """Tier 4 — every keyword present, in any order.
+
+        ⚠️ All-or-nothing, and it fails on exactly the same input tier 3 does:
+        the same merge that empties the intersection also removes the `CUC`
+        token this test requires. Two tiers, one failure mode.
+        """
         tokens = set(stripped.split())
         for alias in aliases:
-            if not alias.keywords:
-                continue
-            if all(keyword in tokens for keyword in alias.keywords):
+            if alias.keywords and all(keyword in tokens for keyword in alias.keywords):
                 return NormalizationOutcome(
                     value=alias.canonical_value,
                     confidence=_KEYWORD_CONFIDENCE,
                     tier=4,
                     matched_alias_id=alias.id,
                 )
-
-        return NormalizationOutcome(value=None, confidence=0.0, tier=0)
+        return None

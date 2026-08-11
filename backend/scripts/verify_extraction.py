@@ -54,6 +54,7 @@ from cocas.domain.ports.ocr import (
     IRegionRecognizer,
     OcrOptions,
     PreprocessProfile,
+    RawFieldValue,
     TextRegion,
 )
 from cocas.domain.ports.persistence import AliasRecord
@@ -73,6 +74,7 @@ from cocas.domain.validation import (
     Severity,
     ValidationEngine,
 )
+from cocas.domain.value_objects.issue_place import BO_CONG_AN
 from cocas.infrastructure.ocr.channels.mrz_reader import Td1MrzReader
 from cocas.infrastructure.ocr.channels.qr_decoder import ZxingQrDecoder
 from cocas.infrastructure.ocr.extraction.zone_anchor_extractor import ZoneAndAnchorExtractor
@@ -106,25 +108,40 @@ def _doc_type(module: ModuleType, code: str, name: str) -> DocumentTypeSpec:
     )
 
 
-# The two alias rows §4.4.14 seeds for `issue_place`, enough for tier 2/4 here.
-SEED_ALIASES = [
-    AliasRecord(
-        id=1,
-        field_key="issue_place",
-        canonical_value="CỤC CẢNH SÁT QUẢN LÝ HÀNH CHÍNH VỀ TRẬT TỰ XÃ HỘI",
-        match_tier=4,
-        assigned_confidence=0.60,
-        keywords=("CUC", "CANH", "SAT"),
-    ),
-    AliasRecord(
-        id=2,
-        field_key="issue_place",
-        canonical_value="BỘ CÔNG AN",
-        match_tier=4,
-        assigned_confidence=0.60,
-        keywords=("BO", "CONG", "AN"),
-    ),
-]
+def _seed_aliases() -> list[AliasRecord]:
+    """⭐ All 19 seeded `issue_place` rows, read from the migrations themselves.
+
+    ⚠️ An earlier version of this script hand-wrote 2 rows here, both tier 4.
+    That is not a smaller sample of the real seed, it is a different experiment:
+    tier 3 only ever considers rows with an `alias_normalized`, so with 2
+    keyword-only rows loaded the fuzzy tier had *nothing to compare against* and
+    could not fire at all. Every reading fell to tier 4's flat 0.60, and the
+    resulting "issue_place is a uniformly weak field" was a property of the
+    fixture. Load the real rows or measure something else.
+    """
+    rows_2021 = _load("20260811_004_seed_alias.py")._SEED_ROWS
+    rows_2024 = _load("20260811_009_seed_doctype_2024.py")._ALIAS_ROWS
+    records = [
+        AliasRecord(
+            id=index,
+            field_key="issue_place",
+            canonical_value=canonical,
+            match_tier=tier,
+            assigned_confidence=confidence,
+            alias_normalized=alias,
+            keywords=tuple(keywords or ()),
+        )
+        for index, (alias, keywords, canonical, tier, confidence) in enumerate(
+            [(a, k, c, t, f) for a, k, c, t, f in rows_2021]
+            # The 2024 rows omit the canonical column — that generation only ever
+            # prints one of the two values.
+            + [(a, k, BO_CONG_AN, t, f) for a, k, t, f in rows_2024]
+        )
+    ]
+    return records
+
+
+SEED_ALIASES = _seed_aliases()
 
 
 class StaticAliasRepository:
@@ -161,6 +178,11 @@ class ImageRead:
     comparisons: list[tuple[FieldKey, float, bool]] = field(default_factory=list)
     ocr_error: str | None = None
     """Set when the OCR channel gave up on this image — QR/MRZ results still stand."""
+    issue_place_tier: int | None = None
+    """⭐ Which of §12.5's tiers resolved the authority, and on what raw text.
+    Reported per tier because the aggregate hides the thing worth seeing: the
+    whole-string tiers and the shape tier fail on completely different inputs."""
+    issue_place_raw: str | None = None
 
 
 async def read_image(
@@ -217,20 +239,35 @@ async def read_image(
     read.generation = _generation_from(regions, side, has_qr(qr))
     doc_type = doc_types.get(read.generation, doc_types["2021"])
     raw = extractor.extract(regions, side, doc_type, image_set.warp_succeeded)
-    for key, raw_value in raw.items():
-        normalized = await normalizer.normalize(key, raw_value.text, raw_value.confidence)
-        if normalized.value is None:
-            continue
-        read.candidates[key].append(
-            Candidate(value=normalized.value, source=FieldSource.OCR, confidence=normalized.confidence)
-        )
-        if key in exact:
-            scored = normalized.confidence * OCR_FIELD_FACTORS.get(key, 1.0)
-            read.comparisons.append((key, scored, normalized.value == exact[key]))
+    await _add_ocr_fields(read, raw, normalizer, exact)
 
     read.citizen_id = exact.get(FieldKey.ID_NUMBER)
     read.seconds = time.perf_counter() - started
     return read
+
+
+async def _add_ocr_fields(
+    read: ImageRead,
+    raw: dict[FieldKey, RawFieldValue],
+    normalizer: FieldNormalizer,
+    exact: dict[FieldKey, str],
+) -> None:
+    """Normalize the text channel's readings and fold them into `read`."""
+    for key, raw_value in raw.items():
+        normalized = await normalizer.normalize(key, raw_value.text, raw_value.confidence)
+        if key is FieldKey.ISSUE_PLACE:
+            read.issue_place_raw = raw_value.text
+            read.issue_place_tier = normalized.tier
+        if normalized.value is None:
+            continue
+        read.candidates[key].append(
+            Candidate(
+                value=normalized.value, source=FieldSource.OCR, confidence=normalized.confidence
+            )
+        )
+        if key in exact:
+            scored = normalized.confidence * OCR_FIELD_FACTORS.get(key, 1.0)
+            read.comparisons.append((key, scored, normalized.value == exact[key]))
 
 
 def _generation_from(regions: list[TextRegion], side: CardSide, qr_read: bool) -> str:
@@ -394,6 +431,25 @@ def _print_false_confidence(reads: list[ImageRead]) -> None:
               f"= {agree / len(checked) * 100:.1f}%)")
 
 
+def _print_issue_place_tiers(reads: list[ImageRead], *, verbose: bool) -> None:
+    """⭐ Which tier of §12.5 answered — the one field with no exact channel."""
+    attempts = [r for r in reads if r.issue_place_raw]
+    if not attempts:
+        return
+    print(f"\n⭐ issue_place — which tier resolved it, across {len(attempts)} readings")
+    tiers = Counter(r.issue_place_tier for r in attempts)
+    labels = {
+        1: "exact (canonical)", 2: "alias exact", 3: "fuzzy whole-string",
+        4: "keywords", 5: "shape (opening letters)", 0: "NO VALUE",
+    }
+    for tier, count in sorted(tiers.items(), key=lambda item: item[0] or 0):
+        print(f"  tier {tier}  {labels.get(tier or 0, '?'):26}{count:>4}"
+              f"{count / len(attempts) * 100:>7.0f}%")
+    if verbose:
+        for read in attempts:
+            print(f"    t{read.issue_place_tier}  {read.issue_place_raw!r}")
+
+
 def _report(reads: list[ImageRead], *, verbose: bool) -> None:
     # ⭐ Assemble cards by the id number both exact channels print.
     by_id: dict[str, list[ImageRead]] = defaultdict(list)
@@ -433,6 +489,7 @@ def _report(reads: list[ImageRead], *, verbose: bool) -> None:
               f"{review_counts[key]:>8}  {sources}")
 
     _print_false_confidence(reads)
+    _print_issue_place_tiers(reads, verbose=verbose)
 
     print("\nValidation (§8.4), issues raised per card")
     for code, count in sorted(code_counts.items()):

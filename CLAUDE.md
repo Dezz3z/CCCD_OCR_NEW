@@ -126,7 +126,7 @@ Vi phạm = phải sửa, không phải tranh luận.
 
 **Giai đoạn 1 (Thiết kế): ✅ HOÀN THÀNH** — tài liệu D2.0 đã đóng băng, 0 lỗi kiến trúc đã biết.
 
-**Giai đoạn 2 (Triển khai): P0 ✅ + P1 ✅ HOÀN THÀNH (2026-08-09). P2 (OCR) đang làm — tuần 1 (tiền xử lý ảnh) ✅ + tuần 2 (kênh QR/MRZ) ✅ xong 2026-08-09, tuần 3 (engine + phân loại mặt + trích trường) ✅ xong 2026-08-10, tuần 3b (thế hệ thẻ thứ hai + chốt chỉ tiêu QR) ✅ xong 2026-08-10, ⭐ tuần 4 (chuẩn hoá + hợp nhất + validation) ✅ xong 2026-08-10 — 1096 test xanh. P2 hoàn tất phần mã nguồn; còn lại là Golden Set.**
+**Giai đoạn 2 (Triển khai): P0 ✅ + P1 ✅ HOÀN THÀNH (2026-08-09). P2 (OCR) đang làm — tuần 1 (tiền xử lý ảnh) ✅ + tuần 2 (kênh QR/MRZ) ✅ xong 2026-08-09, tuần 3 (engine + phân loại mặt + trích trường) ✅ xong 2026-08-10, tuần 3b (thế hệ thẻ thứ hai + chốt chỉ tiêu QR) ✅ xong 2026-08-10, ⭐ tuần 4 (chuẩn hoá + hợp nhất + validation) ✅ xong 2026-08-10 — 1096 test xanh, ⭐ **tầng 5 `issue_place` (phân biệt bằng chữ đầu) bổ sung 2026-08-11 — 1155 test xanh**. P2 hoàn tất phần mã nguồn; còn lại là Golden Set.**
 Chi tiết đầy đủ từng module — xem [progress.md](progress.md) (cập nhật theo từng module, không rút gọn).
 
 ### Kiến trúc đã triển khai (P0 + P1)
@@ -135,7 +135,7 @@ Backend Python (`backend/src/cocas/`) đã có đủ 3/4 tầng theo Dependency 
 
 | Tầng | Trạng thái |
 |---|---|
-| `domain/` | ✅ Đầy đủ — 10 Value Object · 14 enum · 8 Entity · **7 Domain Service** (thêm `FieldNormalizer`, `ConfidenceCalculator` ở tuần 4) · 18 Port (+ fake/null cho mỗi Port) · cây ngoại lệ · ⭐ **`validation/`**: `ValidationEngine` + registry 4 tập quy tắc + **23 quy tắc `V-OCR-*`** (3 tập còn lại đăng ký **rỗng**, không phải thiếu — xem ghi chú trong `engine.py`) |
+| `domain/` | ✅ Đầy đủ — 10 Value Object · 14 enum · 8 Entity · **7 Domain Service** (thêm `FieldNormalizer`, `ConfidenceCalculator` ở tuần 4; ⭐ `IssuePlaceNormalizer` lên **5 tầng** với `issue_place_shape.py`) · 18 Port (+ fake/null cho mỗi Port) · cây ngoại lệ · ⭐ **`validation/`**: `ValidationEngine` + registry 4 tập quy tắc + **23 quy tắc `V-OCR-*`** (3 tập còn lại đăng ký **rỗng**, không phải thiếu — xem ghi chú trong `engine.py`) |
 | `infrastructure/` | Một phần — **persistence** (19 bảng, 8 migration, 7/8 repository + UnitOfWork; `Contract` repo **hoãn có chủ đích** vì phụ thuộc `RenderContextBuilder` chưa tồn tại tới P3) · **security** (DPAPI thật + AES-256-GCM + blind index) · **logging** (Loguru 3 sink + PII filter 2 lớp) · **system** (`SystemClock`, `Uuid7Generator`) · ⭐ **ocr đầy đủ 7/7 Port**: `preprocessing` (`OpenCvPreprocessor` + 5 biến thể tạo lười + `IOrientationOracle`) · `channels` (`ZxingQrDecoder`, `Td1MrzReader`, `td1.py`) · `engines` (`PaddleOcrAdapter`, `PaddleOrientationOracle`) · `classification` (`HeuristicSideClassifier`) · `extraction` (`ZoneAndAnchorExtractor`, `field_patterns`) · `text_matching.py`. Chưa có: storage, documents, queue |
 | `application/` | ⏳ Rỗng — chờ P3 |
 | `presentation/` | Một phần — middlewares (CORS, security headers, correlation-id, local token) · chưa có router/endpoint nào (64 endpoint là việc P3) |
@@ -166,6 +166,10 @@ Mọi mục dưới đây đã đồng bộ ngược vào `docs/design/`, không
 - ⭐ **Sửa lỗi ngày chỉ được đổi MỘT chữ số và KHÔNG BAO GIỜ đổi năm.** Quét toàn bộ 8 chữ số như đặc tả gốc biến `29/02/2023` (ca biên **bắt buộc phải bị từ chối** theo §8.11) thành `2028-02-29` — cách đọc tự nhất quán duy nhất trong không gian tìm kiếm. Và cho phép 2 phép thế biến `00/00/1990` thành "duy nhất" `06/06/1990`. Giới hạn 1 phép thế đưa không gian từ 256 xuống 4 ứng viên, tức là "duy nhất" mới có nghĩa.
 - ⭐ **Trong chuẩn hoá tên: SỬA chữ số trước, LỌC ký tự sau.** Lọc trước thì `H0ANG` mất số `0` vì ngoài bộ ký tự và thành `HANG` — một cái tên trông hợp lý nhưng không phải cái in trên thẻ. Thứ tự này lộ ra chỉ khi có test, không lộ khi đọc code.
 - ⭐ **QR + MRZ trên cùng một ảnh không phải thế hoà mà là quan sát quyết định nhất** — trọng số 0.80 → BACK. Coi chúng là hai lá phiếu độc lập thì triệt tiêu đúng 0.40–0.40 và **mọi** cặp Căn cước 2024 ra `AMBIGUOUS` (đo: 0/10). Sau khi sửa: **10/10 đúng**, và **rẻ hơn 26%** vì không còn phải đọc dải tiêu đề.
+- ⭐⭐ **`issue_place` là trường đóng 2 giá trị, nên hãy PHÂN LOẠI nó, đừng ĐỌC nó.** Bốn tầng đầu của `IssuePlaceNormalizer` đều so khớp **toàn bộ** chuỗi — đúng cho trường mở, sai cho trường đóng. Thêm **tầng 5**: lấy **3 chữ đầu** (`BOC` / `CUC`), xác nhận bằng **độ dài từ đầu tiên** (`BỘ` 2 ký tự / `CỤC` ≥3). Đo **22/22 đúng ở 0.92**, và quét 752 dòng còn lại của cùng bộ ảnh ra **0 phán quyết sai**.
+  - ⚠️ **Tầng 3 và 4 không phải hai đường dự phòng độc lập — chúng chết cùng một lúc.** Bộ nhận dạng dính chữ (`CUCTRUONG CUCCANH SAT`) làm giao của `token_set_ratio` rỗng **và đồng thời** làm mất token `CUC` mà tầng 4 đòi. Kết quả: **8/22 ảnh không ra giá trị nào** — tệ hơn "độ tin cậy thấp".
+  - ⚠️ **Tín hiệu "độ dài" hấp dẫn trên giấy nhưng sai trên máy.** Hai giá trị chuẩn chênh gần 5 lần (8 / 38 ký tự), nhưng văn bản thật tới nơi thì 2021 = 19–20 ký tự (vùng cắt cụt tên cơ quan) và 2024 = 15 và 31 (vùng nuốt thêm dòng tiếng Anh) — **chồng lấn và ngược chiều**. Độ dài là thuộc tính của **vùng cắt**, không phải của trường. Chỉ độ dài **từ đầu tiên** là dùng được.
+  - ⚠️ **Script đo từng gieo 2 dòng alias trong khi bản seed thật có 19** — và 2 dòng đó đều tầng 4, nên tầng 3 **không có gì để so** và không thể kích hoạt. Con số "0.60 phẳng" trước đây là hiện vật của fixture, không phải tính chất của trường. Khi một trường trông yếu đều, hãy kiểm tra fixture trước.
 - ⭐ **Chỉ 9/23 quy tắc `V-OCR-*` chặn cứng.** Thẻ hết hạn, tuổi bất thường, mã tỉnh lạ đều là 🟡 — chặn vì nghi ngờ là để người dùng không lập được hợp đồng cho khách đang ngồi trước mặt (P-08). Và trường **trống** chỉ do `V-OCR-017` báo: các quy tắc hình dạng (003/005/006/007/016) chỉ chạy khi trường **có giá trị nhưng sai dạng**, nếu không một ô hỏng sẽ nhận hai lỗi.
 
 ### Ràng buộc cần biết khi làm tiếp P2
@@ -176,7 +180,8 @@ Mọi mục dưới đây đã đồng bộ ngược vào `docs/design/`, không
    - **MRZ ≥75%: đã đo 22/22 = 100%** (2026-08-10), 0 lần phải sửa lỗi, 2/2 ảnh có cả hai kênh cho số CCCD khớp nhau.
    - **QR ≥90%: đã đo 20/21 = 95.2%** (2026-08-10) trên các ảnh **thật sự có in QR**.
    - **Phân loại mặt ≥99%: đã đo 22/22 cặp** (12 cặp 2021 + 10 cặp 2024), đưa vào **sai thứ tự** có chủ đích.
-   - ⭐ **False Confidence ≤0.5%: đã đo được 0/16 = 0.0%** (2026-08-10) — lần đầu tiên chỉ số chặn phát hành này không còn là ô trống. ⚠️ Proxy dùng QR/MRZ **làm nhãn** cho các trường OCR cũng đọc được, nên nó **chỉ phủ phần giao** — không nói gì về `issue_place`. Golden Set vẫn cần cho con số đầy đủ.
+   - ⭐ **False Confidence ≤0.5%: đã đo được 0/16 = 0.0%** (2026-08-10, đo lại 2026-08-11 vẫn 0/16). ⚠️ Proxy dùng QR/MRZ **làm nhãn** cho các trường OCR cũng đọc được, nên nó **chỉ phủ phần giao** — và `issue_place` nằm **ngoài** phần giao đó vì không kênh chính xác nào đọc trường này. Golden Set vẫn cần cho con số đầy đủ, và nó là **cách duy nhất** để kiểm chứng tầng 5.
+   - ⭐ **`issue_place`: 20/20 thẻ, conf trung bình 0.89, 1 ô phải review** (2026-08-11, sau khi thêm tầng 5). Trước đó: 12/20 ở 0.60, cả 12 phải review.
    - ⭐ **Nhãn của Golden Set phải có cả trường "thế hệ thẻ"** — xem ràng buộc 7.
    - Đo lại bất cứ lúc nào: `python backend/scripts/verify_qr_mrz.py "<thư mục ảnh>"` (kênh) · `verify_side_classification.py` (phân loại mặt) · ⭐ `verify_extraction.py` (toàn chuỗi S3→S11).
 2. **PyInstaller + asyncpg**: `hiddenimports = ["asyncpg.pgproto"]` không đủ — asyncpg nạp submodule Cython biên dịch sẵn không thấy được qua static analysis. Dùng `collect_submodules("asyncpg")` (đã áp dụng trong `build.spec`).
