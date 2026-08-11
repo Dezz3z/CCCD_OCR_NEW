@@ -183,6 +183,7 @@ P7: Nghiệm thu      [    ] ⏳ TODO (1 tuần)
   - ⭐ **Sửa phân loại mặt cho Căn cước 2024** (mục treo cuối tuần 3b): **0/10 → 10/10 cặp**, xem phát hiện #31
   - `scripts/verify_side_classification.py` + `scripts/verify_extraction.py` — hai công cụ đo mới, dùng lại nguyên vẹn khi có Golden Set
   - **1096 test toàn dự án xanh** (+165), ruff sạch, `mypy --strict` domain+application 0 lỗi, import-linter 4/4. Độ phủ mã mới: fusion 100% · calculator 100% · validation engine 100% · `ocr_rules` 99% · normalizer 98%
+- [x] ⭐ **Bổ sung 2026-08-11: tầng 5 cho `issue_place`** — phân biệt 2 giá trị bằng **3 chữ đầu** thay vì so khớp toàn chuỗi (`domain/services/issue_place_shape.py`). 22/22 đúng, 0/752 phán quyết sai trên các dòng khác. **1155 test xanh** (+59), độ phủ 2 file mới 100%. Xem phát hiện #34
 
 **⭐ Đo toàn chuỗi S3→S11 trên 46 ảnh thật (2026-08-10, `scripts/verify_extraction.py`)**
 
@@ -195,15 +196,19 @@ Thẻ được **ghép từ chính dữ liệu, không từ tên file**: mọi �
 | `issue_date` | **20/20** | 0.99 | 0 | QR 19 · OCR 1 |
 | `expiry_date` | **20/20** | 0.98 | 0 | **MRZ 20** |
 | `full_name` | 19/20 | 1.00 | 0 | QR 19 |
-| ⚠️ `issue_place` | **12/20** | **0.60** | **12** | OCR 12 |
+| ⭐ `issue_place` | **20/20** | **0.89** | **1** | OCR 20 |
+
+> ⭐ Dòng `issue_place` đo lại **2026-08-11** sau khi thêm tầng 5 (phát hiện #34). Số cũ của lần đo 2026-08-10: **12/20 · 0.60 · 12 ô review**. Năm dòng còn lại không đổi.
 
 - ⭐⭐ **False Confidence đo được lần đầu tiên: 0/16 = 0.0%** (chỉ tiêu ≤0.5%, **chặn phát hành**). Proxy: QR/MRZ là kênh chính xác nên chúng làm **nhãn** cho các trường mà OCR cũng đọc được; một trường OCR ≥0.95 mà lệch nhãn là một ca False Confidence. Mẫu số nhỏ (16) và chỉ phủ phần giao — **không thay thế được Golden Set**, nhưng đây là lần đầu chỉ số này không còn là ô trống.
 - ⭐ **Hệ số trường của quy tắc 2 làm đúng việc của nó.** OCR khớp kênh chính xác **33/50 = 66%** — 17 ca lệch gần như toàn bộ là `full_name` mất dấu (§7.4.5). Không ca lệch nào lọt vào mức ≥0.95 **sau khi nhân hệ số 0.75**, tức là chính hệ số này giữ False Confidence ở 0.
 - ⭐ **`expiry_date` 20/20 đến từ MRZ, không kênh nào khác đóng góp** — xác nhận đúng điều §7.4.4 gọi MRZ là "trường không kênh nào khác cung cấp".
-- ⚠️ **`issue_place` là điểm yếu duy nhất còn lại: 12/20, và cả 12 đều ở tầng 4 (từ khoá, conf 0.60) nên đều phải review.** Tầng 1 (khớp chính xác sau khi bỏ dấu) không lần nào kích hoạt vì bộ nhận dạng trả `BO C0NG AI` chứ không trả `BO CONG AN`. ⚠️ **Một phần là hiện vật của phép đo**: script gieo đúng 2 dòng alias tầng 4, trong khi bản seed thật có 16 dòng gồm cả alias tầng 2 — con số thật sẽ khá hơn, nhưng **chưa đo**.
+- ✅ ~~**`issue_place` là điểm yếu duy nhất còn lại**~~ — **đo lại 2026-08-11 sau tầng 5: 20/20, conf 0.89, 1 ô review**, cả 22 lần đọc đều do tầng 5 giải quyết. Số cũ (12/20 ở tầng 4, conf 0.60) có **hai** nguyên nhân và cái lớn hơn nằm ở phép đo: script gieo 2 dòng alias trong khi seed thật có 19, và cả 2 đều tầng 4 — mà tầng 3 chỉ xét dòng có `alias_normalized`, nên tầng 3 **không có gì để so**. Nhưng gieo đủ 19 dòng thật cũng chỉ được 13/22 ở 0.65. Xem phát hiện #34.
 - **Validation:** 10/20 thẻ bị chặn — `V-OCR-017` ×9 (thiếu `issue_place`), `V-OCR-001` ×3 (thẻ chỉ có một mặt trong bộ mẫu), `V-OCR-002` ×2 (hai ảnh cùng mặt), `V-OCR-018` ×12 cảnh báo (đúng 12 giá trị `issue_place` ở 0.60). Mọi nguyên nhân đều truy được về một trường cụ thể, không có lỗi "không rõ vì sao".
-- **Điểm tổng:** trung bình 0.92 · thấp nhất 0.68 · cao nhất 0.96.
+  - ⭐ **Đo lại 2026-08-11: còn 5/20 thẻ bị chặn** — `V-OCR-001` ×3, `V-OCR-002` ×2, `V-OCR-017` ×1, `V-OCR-018` ×1. Toàn bộ 5 ca còn lại là **lỗi dữ liệu mẫu** (bộ ảnh dev có thẻ chỉ một mặt và có cặp trùng mặt), không phải lỗi pipeline.
+- **Điểm tổng:** trung bình 0.92 · thấp nhất 0.68 · cao nhất 0.96. ⭐ Đo lại 2026-08-11: trung bình **0.97** · thấp nhất 0.71 · cao nhất 0.99.
 - 🔴 **Thời gian: trung bình 7.7 s/ảnh, p95 17.5 s/ảnh** trên máy dev **4 nhân / 4 GB RAM** — ngân sách là **9 s cho cả CẶP**. Xem rủi ro p95 bên dưới.
+  - ⚠️ Đo lại 2026-08-11 trên cùng máy, cùng bộ ảnh: trung bình **5.9 s**, p95 **10.2 s**. **Không phải do thay đổi nào** — tầng 5 không đụng vào đường OCR. Đây là **dao động tải máy giữa hai lần chạy**, và bản thân nó là số đo đáng ghi: cùng một pipeline trên cùng một máy lệch nhau **1.7 lần** ở p95, nên đừng chốt hay bác bỏ chỉ tiêu latency dựa trên một lần chạy.
 
 **Phát hiện khi chạy trên ảnh thật (đã sửa, đã đồng bộ vào `07-module-ocr.md` §7.4.1):**
 1. ⭐ **Dò contour theo đặc tả gốc chỉ nắn được 4/46 ảnh.** Hai nguyên nhân, đều là trường hợp phổ biến chứ không phải ngoại lệ: (a) ảnh chụp bằng điện thoại cầm dọc → thẻ nằm ngang trong khung dọc, tỉ lệ quad ra 1/1.585 = 0.63 nên bị chốt tỉ lệ loại thẳng; (b) ảnh đã crop sát thẻ → không còn đường viền nào để dò. Sửa: đổi nhãn 4 đỉnh về khổ ngang, và lấy chính 4 góc ảnh làm quad khi tỉ lệ khung ảnh nằm trong dải cho phép. Sau khi sửa: **44/46**.
@@ -299,7 +304,7 @@ Thẻ được **ghép từ chính dữ liệu, không từ tên file**: mọi �
 | Field Accuracy (có QR/MRZ) | ≥99% | ⭐ **6/6 trường đạt 100%** đọc được | `issue_place` 60% → **100%** sau tầng 5 (2026-08-11) |
 | Field Accuracy (OCR thuần) | ≥95% | 66% khớp kênh chính xác | gần như toàn bộ ca lệch là `full_name` mất dấu |
 | Full-Card Accuracy | ≥92% | **chưa đo** | cần nhãn vàng cho cả 6 trường |
-| 🔴 p95 latency | ≤9s **mỗi cặp** | **17.5 s mỗi ẢNH** | máy 4 nhân / 4 GB — xem rủi ro |
+| 🔴 p95 latency | ≤9s **mỗi cặp** | **17.5 / 10.2 s mỗi ẢNH** | ⚠️ hai lần chạy cùng máy cùng ảnh lệch **1.7×** — xem rủi ro |
 
 **Risks:**
 - ✅ ~~PaddleOCR tải model từ mạng (vi phạm P-01)~~ — **ĐÓNG 2026-08-10.** `model_dir` tường minh, thiếu tệp → ném lỗi chứ không tải. Kiểm chứng bằng cách **cắt sạch lời gọi socket** rồi chạy `warm_up()` + `recognize()`: cả hai thành công, 0 lần gọi mạng, không có `~/.paddleocr`. Giữ làm test hồi quy `tests/security/test_ocr_offline.py`
@@ -308,6 +313,7 @@ Thẻ được **ghép từ chính dữ liệu, không từ tên file**: mọi �
   - 🎯 Người dùng chốt 2026-08-10: **đo trước, chốt sau**. Đo được: `full_name` 11/15 khớp chính xác; 3/4 ca còn lại chỉ **thiếu dấu cách**, 1 ca sai một ký tự. QR là nguồn chính (trọng số 1.00) nên ảnh hưởng nhỏ hơn lo ngại ban đầu. Quyết định cuối khi có Golden Set
 - 🔴 **Ngân sách p95 ≤ 9 s — ĐO THẬT LÀ 17.5 s/ẢNH, nâng mức rủi ro từ 🟠 lên 🔴** (đo 2026-08-10 toàn chuỗi S3→S11). Trung bình 7.7 s/ảnh; ngân sách là 9 s cho **cả cặp**, tức ~4.5 s/ảnh
   - Máy đo là máy dev của người dùng: **4 nhân / 4 GB RAM**. Chưa biết máy đích thực tế — đây là biến số lớn nhất chưa nắm được
+  - ⚠️ **Đo lại 2026-08-11 trên đúng máy đó, đúng bộ ảnh đó: trung bình 5.9 s, p95 10.2 s** — lệch **1.7×** so với lần đo 2026-08-10 mà **không có thay đổi nào trên đường OCR**. Tức là phương sai giữa các lần chạy lớn ngang cỡ khoảng cách tới chỉ tiêu. **Đừng chốt hay bác bỏ chỉ tiêu này bằng một lần chạy** — khi đo thật (P3, hoặc khi có Golden Set) phải chạy nhiều lượt và báo cáo cả dải, không chỉ một con số
   - ✅ Đã áp dụng: nhận dạng toàn thẻ **một lượt duy nhất**, thế hệ thẻ suy từ chính các vùng text đó (phát hiện #32) — đã cắt từ 28–45 s xuống 7.7 s và xoá sạch `OcrTimeoutError`
   - 🎯 P3 còn 3 đòn bẩy chưa dùng: (1) **bỏ hẳn lượt OCR khi QR đã đọc được cả 5 trường** — đo cho thấy QR thắng 19/20 ở 4 trường, nên với thẻ có QR tốt thì kênh OCR chỉ còn phục vụ `issue_place`; (2) chạy hai ảnh **song song** (ngân sách là cho cặp, không phải cho ảnh); (3) hạ `target_long_edge` và đo lại độ chính xác
   - ⚠️ **Đừng chốt hạ chất lượng trước khi thử (1) và (2)** — cả hai không đụng gì tới độ chính xác
