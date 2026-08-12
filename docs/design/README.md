@@ -179,6 +179,12 @@ Mọi dòng code phải tuân thủ. Vi phạm = phải sửa, không phải tra
 | 2026-08-11 | ⭐ **Không xây `PlainFileVault`** — Container không có chế độ dev (P-11), y như quyết định đã chốt cho `NullCryptoService` ở P1 ([§12.13.3](12-dac-ta-module.md)) |
 | 2026-08-11 | ⭐ Đo toàn chuỗi sinh hợp đồng trên 2 mẫu thật: **p50 179–239 ms · p95 201–320 ms**, ngân sách §9.11 là ~500 ms. Ghi Vault mã hoá **không dời được kim** so với render đơn thuần ([§9.11.1](09-template-va-tai-lieu.md)) |
 | 2026-08-11 | ⚠️ **Cả 2 mẫu thật không dùng `{{contract_no}}`** — số hợp đồng là định danh nội bộ (§9.14.1), không in ra trang. Phép kiểm cũ báo đỏ trên tài liệu đúng ([§9.11.1](09-template-va-tai-lieu.md)) |
+| 2026-08-12 | 🔴🔴 **Sáu khiếm khuyết lộ ra ở lần `alembic upgrade head` đầu tiên kể từ P1** — dấu phẩy đuôi trong `IN ('DOCX',)`, seed tầng sai, `create_all` trong `002` chặn mọi `ALTER` sau nó, quy ước đặt tên bị áp hai lần, FK `ocr_field`→`ocr_result` vỡ vì thứ tự INSERT, `snapshot_sha256` sai nội dung và sai thời điểm. 1532 test xanh không thấy cái nào ([§12.20](12-dac-ta-module.md)) |
+| 2026-08-12 | ⭐ **`contract.snapshot_sha256` là hash của render snapshot, không phải của `.docx`** (§4.4.10 luôn nói vậy). `mark_completed()` bỏ tham số; giá trị đặt lúc dựng `Contract` vì cột NOT NULL và dòng được INSERT trước khi render ([§12.20.2](12-dac-ta-module.md)) |
+| 2026-08-12 | ⭐ **Alembic tự áp `NAMING_CONVENTION`** — `drop_constraint` phải nhận **tên ngắn**. Test cũ yêu cầu tên đầy đủ, tức là nó khẳng định đúng cái sai ([§12.20.1](12-dac-ta-module.md)) |
+| 2026-08-12 | ⭐ **`JobRunner` phải giải phóng đối tượng của job khi thất bại lần cuối** — job `FAILED` mà `ocr_session` kẹt `PROCESSING` khiến client poll vĩnh viễn ([§12.20.3](12-dac-ta-module.md)) |
+| 2026-08-12 | ⭐ **Kho mẫu (`TemplateStore`) là nửa để RÕ của §11**, tách hẳn khỏi Vault: `DocxRenderer` mở mẫu **theo đường dẫn** và đệm theo `(path, sha256)`, còn mẫu không chứa dữ liệu khách ([§12.21](12-dac-ta-module.md)) |
+| 2026-08-12 | ⭐ Mốc **M3 đạt**: 16 lượt gọi của §5.4 chạy trọn trên server thật, 2 ảnh CCCD → `.docx` tải về mở được bằng Word, 0 placeholder sót ([`demo_m3_contract.py`](../../backend/scripts/demo_m3_contract.py)) |
 
 ### Tóm tắt kết quả D2.0
 

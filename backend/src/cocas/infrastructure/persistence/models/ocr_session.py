@@ -25,6 +25,7 @@ from cocas.infrastructure.persistence.models.base import (
     CreatedAtMixin,
     CreatedByMixin,
     UuidPkMixin,
+    sql_in,
 )
 
 _STATUS_VALUES = tuple(s.value for s in OcrSessionStatus)
@@ -38,7 +39,7 @@ class OcrSessionModel(CreatedByMixin, UuidPkMixin, CreatedAtMixin, Base):
             "status NOT IN ('COMPLETED','COMPLETED_WITH_WARNINGS','FAILED') OR completed_at IS NOT NULL",
             name="completed_has_time",
         ),
-        CheckConstraint(f"status IN {_STATUS_VALUES}", name="status_valid"),
+        CheckConstraint(sql_in("status", _STATUS_VALUES), name="status_valid"),
         CheckConstraint("overall_confidence IS NULL OR overall_confidence BETWEEN 0 AND 1", name="confidence_range"),
         Index("ix_ocr_session__user_created", "created_by", "created_at"),
         Index(

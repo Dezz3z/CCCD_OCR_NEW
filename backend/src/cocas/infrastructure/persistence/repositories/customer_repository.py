@@ -8,6 +8,7 @@ from __future__ import annotations
 
 from datetime import date
 
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from cocas.domain.entities.customer import Customer
@@ -38,6 +39,27 @@ class SqlAlchemyCustomerRepository(SqlAlchemyRepository[Customer, CustomerModel]
 
     def _aad(self, entity_id: object, column: str) -> AadContext:
         return AadContext(entity_id=str(entity_id), table_name=_TABLE, column_name=column)
+
+    async def find_by_id_number(self, id_number: str) -> Customer | None:
+        """Exact lookup on the encrypted CCCD, via its blind index (§5.3.7).
+
+        ⭐ The blind index is the **only** way this query can exist. `id_number_enc`
+        is AES-GCM with a per-row nonce, so two rows holding the same CCCD have
+        different ciphertexts and `WHERE id_number_enc = :x` matches nothing —
+        ever. `HMAC(PEPPER, "id_number" ‖ normalize(value))` is deterministic,
+        so it can be indexed and compared.
+
+        ⚠️ The field name is part of the HMAC input. Without it a phone number
+        and a bank account number that happen to be the same digit string
+        produce the same token, and a lookup crosses columns.
+        """
+        blind_index = self._crypto.blind_index(id_number, BidxField.ID_NUMBER)
+        statement = select(self.model).where(
+            self.model.id_number_bidx == blind_index,
+            self.model.deleted_at.is_(None),
+        )
+        row = (await self._session.execute(statement)).scalar_one_or_none()
+        return self._to_domain(row) if row is not None else None
 
     def _to_domain(self, row: CustomerModel) -> Customer:
         id_number_plain = self._crypto.decrypt(

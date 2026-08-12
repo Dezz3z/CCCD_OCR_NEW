@@ -120,11 +120,26 @@ _ANCHOR_PATTERNS = {
 # and the keyword tier for that one canonical value — not the 16 rows
 # `20260811_004` seeds for the 2021 authority.
 #
+# ⭐ Fixed 2026-08-12, first real `alembic upgrade head` since P1: the keyword
+# row was written as `(…, 2, 0.90)`. Both numbers were wrong, in two different
+# ways, and neither was reachable by any test:
+#
+#   * **Tier 2 is not a legal tier for a keyword row.** `ck_normalization_alias
+#     __tier4` reads `(match_tier = 4 AND keywords IS NOT NULL) OR (match_tier
+#     < 4 AND alias_normalized IS NOT NULL)`, so PostgreSQL rejected the INSERT
+#     outright — this migration could never have run anywhere. It only looked
+#     applied because the cluster had been unavailable since P1.
+#   * **0.90 was unreachable even if it had inserted.** Only tier 2 reads
+#     `assigned_confidence` (`_alias_exact`); the keyword tier returns the
+#     module constant `_KEYWORD_CONFIDENCE = 0.60`. Storing 0.90 would have
+#     been a number the system never produces — a seed row that lies about the
+#     behaviour it configures.
+#
 # (alias_normalized, keywords, match_tier, assigned_confidence)
 _ALIAS_ROWS: list[tuple[str | None, list[str] | None, int, float]] = [
     ("BO CONG AN", None, 1, 1.00),
     ("BO CONG AN MINISTRY OF PUBLIC SECURITY", None, 1, 1.00),
-    (None, ["BO", "CONG", "AN"], 2, 0.90),
+    (None, ["BO", "CONG", "AN"], 4, 0.60),
 ]
 
 _document_type = sa.table(

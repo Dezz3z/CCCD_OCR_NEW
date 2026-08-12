@@ -59,16 +59,33 @@ _OLD_TIER_CHECK = "normalization_tier IS NULL OR normalization_tier BETWEEN 1 AN
 _NEW_TIER_CHECK = "normalization_tier IS NULL OR normalization_tier BETWEEN 1 AND 5"
 
 
+def _column_exists(table: str, column: str) -> bool:
+    """Whether `table.column` is present in the live database right now.
+
+    Revision 002 runs `Base.metadata.create_all()`, so it materialises the
+    models as they stand today — including this column. On a fresh database
+    `add_column` would therefore raise `DuplicateColumnError` and the whole
+    chain would stop at 010. Measured 2026-08-12; see 002's docstring.
+
+    The `UPDATE`s below still run either way: `create_all` gives the column its
+    `'[]'::jsonb` default, and filling in the measured markers is this
+    revision's actual job.
+    """
+    inspector = sa.inspect(op.get_bind())
+    return any(col["name"] == column for col in inspector.get_columns(table))
+
+
 def upgrade() -> None:
-    op.add_column(
-        "document_type",
-        sa.Column(
-            "identity_markers",
-            JSONB,
-            nullable=False,
-            server_default=sa.text("'[]'::jsonb"),
-        ),
-    )
+    if not _column_exists("document_type", "identity_markers"):
+        op.add_column(
+            "document_type",
+            sa.Column(
+                "identity_markers",
+                JSONB,
+                nullable=False,
+                server_default=sa.text("'[]'::jsonb"),
+            ),
+        )
     for code, markers in _MARKERS.items():
         op.execute(
             _document_type.update()
@@ -76,7 +93,12 @@ def upgrade() -> None:
             .values(identity_markers=markers)
         )
 
-    op.drop_constraint("ck_ocr_field__tier_range", "ocr_field", type_="check")
+    # ⚠️ The SHORT name. `env.py` hands Alembic `target_metadata`, so `op`
+    # applies `NAMING_CONVENTION` — `ck_%(table_name)s__%(constraint_name)s` —
+    # to whatever is passed here. Passing the full `ck_ocr_field__tier_range`
+    # emits `DROP CONSTRAINT ck_ocr_field__ck_ocr_field__tier_range`, which of
+    # course does not exist. Measured 2026-08-12.
+    op.drop_constraint("tier_range", "ocr_field", type_="check")
     op.create_check_constraint("tier_range", "ocr_field", _NEW_TIER_CHECK)
 
 
@@ -85,6 +107,12 @@ def downgrade() -> None:
     # written at tier 5 makes this fail. That is the correct behaviour: silently
     # deleting or rewriting a user's extracted values to fit an older constraint
     # would be worse than refusing to downgrade.
-    op.drop_constraint("ck_ocr_field__tier_range", "ocr_field", type_="check")
+    # ⚠️ The SHORT name. `env.py` hands Alembic `target_metadata`, so `op`
+    # applies `NAMING_CONVENTION` — `ck_%(table_name)s__%(constraint_name)s` —
+    # to whatever is passed here. Passing the full `ck_ocr_field__tier_range`
+    # emits `DROP CONSTRAINT ck_ocr_field__ck_ocr_field__tier_range`, which of
+    # course does not exist. Measured 2026-08-12.
+    op.drop_constraint("tier_range", "ocr_field", type_="check")
     op.create_check_constraint("tier_range", "ocr_field", _OLD_TIER_CHECK)
-    op.drop_column("document_type", "identity_markers")
+    if _column_exists("document_type", "identity_markers"):
+        op.drop_column("document_type", "identity_markers")

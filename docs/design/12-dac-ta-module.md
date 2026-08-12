@@ -646,4 +646,60 @@ Bảng §12.19 từng ghi hiện thực dev `PlainFileVault`. **Không xây**, c
 
 ---
 
+## ⭐ 12.20. Sáu điều chỉ lộ ra khi chạy trên PostgreSQL thật (P3 module 7)
+
+Cụm CSDL của dự án không chạy được kể từ P1, nên toàn bộ P2 và P3 module 1–6 được kiểm bằng repository giả. Lần `alembic upgrade head` đầu tiên sau đó (2026-08-12) tìm ra **sáu** khiếm khuyết, và không cái nào bị bộ test 1532 ca bắt được — vì tất cả đều nằm ở chỗ mã nguồn gặp một database thật.
+
+| # | Khiếm khuyết | Vì sao test không thấy |
+|---|---|---|
+| 1 | `CHECK (doc_type IN ('DOCX',))` — dấu phẩy đuôi của tuple một phần tử | Test đọc **chuỗi** ràng buộc; không ai nhờ Postgres phân tích nó |
+| 2 | Migration `009` gieo dòng từ khoá ở `match_tier=2` | Vi phạm CHECK của `002`; migration chưa từng chạy nên chưa từng bị từ chối |
+| 3 | `002` dùng `create_all()` ⇒ luôn tạo schema **hiện tại**, nên `ALTER` sau đó đụng cột đã có | Không có DB thì không có "cột đã có" |
+| 4 | `op.drop_constraint("ck_x__y")` ra `ck_x__ck_x__y` | Test *yêu cầu* tên đầy đủ — nó khẳng định đúng cái sai |
+| 5 | `ocr_field` INSERT trước `ocr_result` ⇒ vỡ FK | Hai mapper không có `relationship()`, nên không có gì để SQLAlchemy sắp thứ tự |
+| 6 | `contract.snapshot_sha256` nhận hash **`.docx`**, và nhận quá muộn | Repository giả không có cột NOT NULL |
+
+### ⭐ 12.20.1. Hai kết luận đáng giữ
+
+**Quy ước đặt tên là một hàm, không phải một chuỗi.** `env.py` trao `target_metadata` cho Alembic, nên `op.*` **tự áp** `NAMING_CONVENTION` lên tên nhận vào. Mọi lệnh `drop_constraint`/`create_check_constraint` phải truyền **tên ngắn**. `tests/unit/migrations/test_constraint_names.py` giờ khẳng định đúng chiều đó, kèm một phép kiểm riêng cấm truyền tên đã có tiền tố.
+
+**`Base.metadata.create_all()` trong migration đầu không đóng băng lịch sử.** Nó đọc model **hôm nay**, nên mọi revision sau nó phải **nhận biết trạng thái** (`_column_exists()` trước `add_column`/`drop_column`). Cách còn lại — viết tay DDL 19 bảng — sẽ tái tạo đúng thứ drift mà `create_all` tồn tại để ngăn, và làm các test soi `Base.metadata` thôi không còn mô tả database thật.
+
+### ⭐ 12.20.2. `contract.snapshot_sha256` là hash của **snapshot**, không phải của `.docx`
+
+§4.4.10 nói rõ: *"Chứng minh snapshot không bị sửa"*. Mã nguồn module 6 truyền hash tài liệu vào `mark_completed()` — trùng lặp với `contract_document.file_sha256`, và bỏ trống đúng việc cột này sinh ra để làm.
+
+Nó còn **đến muộn một transaction**: cột NOT NULL, mà dòng được INSERT ở `GENERATING` **trước** khi render (§12.14.2). Snapshot là **đầu vào** của render, nên hash của nó đã biết ngay tại T1.
+
+- `mark_completed(now)` — bỏ tham số hash.
+- `Contract.snapshot_sha256` đặt lúc dựng, từ `domain/services/render_snapshot.digest()`.
+- ⚠️ **Bytes đem hash phải là bytes đem mã hoá.** `canonical_bytes()` là đường duy nhất tới cả hai; hai lời gọi `json.dumps` riêng sẽ đồng ý cho tới ngày một bên thêm tham số.
+
+### ⭐ 12.20.3. Hàng đợi biết mình hỏng ≠ người dùng biết
+
+Job OCR hết 3 lượt thử và được ghi `FAILED` đúng chuẩn — nhưng `ocr_session.status` **vẫn `PROCESSING`**, nên `GET /ocr/{id}/progress` trả "đang xử lý" mãi mãi. Wizard không đi tiếp được và không có gì báo lỗi.
+
+`JobRunner` vì thế nhận thêm `on_terminal_failure(target_type, target_id, code, detail)`, và Container nối nó vào `FailOcrSessionUseCase`. Bất biến: **một job kết thúc thất bại phải giải phóng đối tượng của nó.** Việc này *phải* nằm ở runner chứ không ở handler — handler đã ném ngoại lệ rồi thì không còn chạy được nữa.
+
+---
+
+## ⭐ 12.21. `TemplateStore` — nửa để RÕ của kho lưu trữ
+
+§11 xếp `data/templates/` **cạnh** `data/vault/`, không nằm trong. Module 7 hiện thực nó thành một lớp riêng thay vì một `VaultCategory`, và lý do là cấu trúc chứ không phải tiện tay:
+
+1. **`DocxRenderer` mở mẫu theo đường dẫn** và đệm môi trường Jinja đã chuẩn bị theo `(path, sha256)` (§9.12.1). Đi qua `IFileStorage` nghĩa là giải mã 2–3 MB mỗi hợp đồng để trả byte lại cho một thành phần vốn muốn một *file*.
+2. **Mẫu không chứa dữ liệu khách hàng** — chỉ `{{placeholder}}`. §4.8.3 xếp "mọi file trong Vault" vào cột mã hoá vì những file đó là ảnh CCCD và hợp đồng đã điền. Mẫu không phải cả hai.
+
+⚠️ Vẫn **write-temp → verify SHA-256 → rename**: một file mẫu ghi dở là một hợp đồng bị cắt cụt.
+
+⚠️ Và vẫn **kiểm hình dạng trước khi ghép** (`{code}/v{n}/template.docx`), cùng lý do §12.13.2 — trên Windows phép ghép đường dẫn không bảo vệ gì.
+
+| Mục | Nội dung |
+|---|---|
+| **Không phải Port** | Chỉ có một hiện thực và không có quyết định nghiệp vụ nào phụ thuộc nó. Cho nó chung interface với `IFileStorage` là cách một hợp đồng bị ghi nhầm sang nửa để rõ |
+| **Use Case** | `RegisterTemplateVersionUseCase` — soi bằng Port 20 **trước** khi ghi, ghi file **ngoài** transaction, xoá file nếu transaction hỏng |
+| **Bootstrap** | [`backend/scripts/bootstrap_templates.py`](../../backend/scripts/bootstrap_templates.py) — đi qua Use Case thật, nên `declared_variables` trong CSDL là thứ Port 20 **thực sự đọc được** |
+
+---
+
 [← 11 — Cấu trúc & Thư viện](11-cau-truc-va-thu-vien.md) · [Mục lục](README.md) · [Tiếp: 13 — Kiểm thử & Đóng gói →](13-kiem-thu-va-dong-goi.md)

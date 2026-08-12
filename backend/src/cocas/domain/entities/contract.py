@@ -91,15 +91,22 @@ class Contract:
     def mark_generating(self, now: datetime) -> None:
         self._transition(ContractStatus.GENERATING, now)
 
-    def mark_completed(self, snapshot_sha256: bytes, now: datetime) -> None:
+    def mark_completed(self, now: datetime) -> None:
         """⭐ D2.1 — the single success transition.
 
-        `snapshot_sha256` is required here because the only thing that can
-        move a contract to `COMPLETED` is a `.docx` that was written, read
-        back and hashed. Before D2.1 this argument belonged to
-        `mark_docx_ready()`, an intermediate state that no longer exists.
+        🔴 **No `snapshot_sha256` argument.** It used to take one, and the
+        caller passed the `.docx` digest — but §4.4.10 defines that column as
+        proof the *render snapshot* was not altered, and the document's digest
+        already lives in `contract_document.file_sha256`. So the old signature
+        recorded one thing twice and the intended thing never.
+
+        It also could not work: the column is NOT NULL and the row is INSERTed
+        at `GENERATING`, before any rendering happens (§12.14.2). A value that
+        first appears at `COMPLETED` arrives one transaction too late — which
+        the real repository proved on the first end-to-end run by refusing the
+        INSERT. The snapshot is an *input* to the render, so its digest is set
+        at construction; see `domain/services/render_snapshot.py`.
         """
-        self.snapshot_sha256 = snapshot_sha256
         self._transition(ContractStatus.COMPLETED, now)
         self.error_code = None
         self.error_message = None

@@ -19,6 +19,7 @@ from cocas.domain.entities.contract import Contract
 from cocas.domain.enums.contract_status import ContractStatus
 from cocas.domain.exceptions import BusinessRuleViolation
 from cocas.domain.ports.crypto import AadContext, ICryptoService
+from cocas.domain.services.render_snapshot import canonical_bytes
 from cocas.infrastructure.persistence.models.contract import ContractModel
 from cocas.infrastructure.persistence.repositories._base import SqlAlchemyRepository
 
@@ -124,8 +125,12 @@ class SqlAlchemyContractRepository(SqlAlchemyRepository[Contract, ContractModel]
         "in lại sau 5 năm giống bản gốc" guarantee of P-09 becomes "prints
         somebody's contract".
         """
-        plaintext = json.dumps(snapshot, ensure_ascii=False, sort_keys=True).encode("utf-8")
-        return self._crypto.encrypt(plaintext, self._aad(entity.id))
+        # ⚠️ Same helper the digest uses. `contract.snapshot_sha256` claims to
+        # prove this blob was not altered, which it only does if the hashed
+        # bytes and the encrypted bytes are produced identically.
+        return self._crypto.encrypt(
+            canonical_bytes(snapshot), self._aad(entity.id)
+        )
 
     def decrypt_snapshot(self, contract_id: uuid.UUID, blob: bytes) -> dict[str, object]:
         """Read a stored snapshot back (regeneration, diagnostics, P-09 audit)."""

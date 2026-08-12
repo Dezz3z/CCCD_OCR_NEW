@@ -7,6 +7,8 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from cocas.config.settings import Settings
 from cocas.container import init_container
+from cocas.presentation.api.v1.routers import api_v1_router, system
+from cocas.presentation.errors import register_exception_handlers
 from cocas.presentation.middlewares import (
     CorrelationIdMiddleware,
     LocalTokenMiddleware,
@@ -24,6 +26,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         """Manage application lifecycle — build the Composition Root once at startup."""
         container = init_container(settings)
         _app.state.container = container
+        # ⭐ The queue starts with the app and stops with it. `container.close()`
+        # stops the runner first, then disposes the pool.
+        container.job_runner().start()
         yield
         await container.close()
 
@@ -33,6 +38,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         version="1.0.0",
         lifespan=lifespan,
     )
+    register_exception_handlers(app)
 
     # CORS
     app.add_middleware(
@@ -43,10 +49,17 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         allow_headers=["*"],
     )
 
-    # Custom middlewares
+    # ⚠️ Starlette runs middleware in **reverse** registration order, so the
+    # last one added is the outermost. §5.5 #1 requires the token check first,
+    # so `LocalTokenMiddleware` is added last — and `CorrelationIdMiddleware`
+    # is added after the security headers so a rejected request still gets a
+    # correlation id in its envelope.
     app.add_middleware(SecurityHeadersMiddleware)
+    app.add_middleware(LocalTokenMiddleware, token=settings.local_token_secret)
     app.add_middleware(CorrelationIdMiddleware)
-    app.add_middleware(LocalTokenMiddleware)
+
+    app.include_router(system.liveness_router)
+    app.include_router(api_v1_router)
 
     return app
 

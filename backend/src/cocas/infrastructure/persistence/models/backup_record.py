@@ -7,14 +7,14 @@ from sqlalchemy import BigInteger, Boolean, CheckConstraint, Integer, LargeBinar
 from sqlalchemy.orm import Mapped, mapped_column
 
 from cocas.domain.enums.backup_status import BackupStatus
-from cocas.infrastructure.persistence.models.base import Base, CreatedAtMixin, UuidPkMixin
+from cocas.infrastructure.persistence.models.base import Base, CreatedAtMixin, UuidPkMixin, sql_in
 
 _BACKUP_STATUS_VALUES = tuple(s.value for s in BackupStatus)
 
 
 class BackupRecordModel(UuidPkMixin, CreatedAtMixin, Base):
     __tablename__ = "backup_record"
-    __table_args__ = (CheckConstraint(f"status IN {_BACKUP_STATUS_VALUES}", name="status_valid"),)
+    __table_args__ = (CheckConstraint(sql_in("status", _BACKUP_STATUS_VALUES), name="status_valid"),)
 
     created_by: Mapped[str | None] = mapped_column(String(64), nullable=True)
     trigger_type: Mapped[str] = mapped_column(String(15), nullable=False)

@@ -12,7 +12,7 @@
 P0: Chuẩn bị        [====] ✅ DONE (2026-08-11)
 P1: Nền tảng        [====] ✅ DONE (2026-08-09)
 P2: OCR Module      [====] 🔄 MÃ NGUỒN XONG (4/4 tuần) — chờ Golden Set ⭐ Critical path
-P3: Nghiệp vụ       [====] 🔄 ĐANG LÀM — module 5/6 xong; còn module 7 (62 endpoint)
+P3: Nghiệp vụ       [====] 🔄 module 6/6 xong · module 7 làm 16/62 endpoint — ⭐ MỐC M3 ĐẠT
 P4: Giao diện       [    ] ⏳ TODO (3 tuần)
 P5: Desktop         [    ] ⏳ TODO (2 tuần)
 P6: Hoàn thiện      [    ] ⏳ TODO (2 tuần)
@@ -590,6 +590,72 @@ Ngân sách §9.11 là "201 sau ~500 ms" ⇒ **đạt, dư gấp đôi**. Mọi 
 
 ---
 
+### ⭐⭐ P3 module 7 (lát cắt demo) — 16/62 endpoint · MỐC M3 ĐẠT
+**Completed:** 2026-08-12
+
+**Mục tiêu có chủ ý hẹp:** đúng tập endpoint mà [§5.4](docs/design/05-thiet-ke-api.md) gọi để đưa hai tấm ảnh CCCD thành một file `.docx`. 46 endpoint còn lại là quản trị, tra cứu và chẩn đoán — việc thật, nhưng không nằm trên con đường đó.
+
+**Kết quả đo (`backend/scripts/demo_m3_contract.py`, server thật + PostgreSQL thật):**
+
+```
+15 lượt gọi HTTP + 1 vòng poll  →  ✅ 16/16
+OCR      COMPLETED · 6.6–7.9 s · 6/6 trường · conf 1.00 (QR) / 0.90 (issue_place)
+Hợp đồng 01A-GDN-202608-00001 → 00002 (số tăng đúng qua 2 lần chạy)
+Sinh     4.3–4.6 s (gồm cả lần chuẩn bị mẫu nguội)
+File     872 KB · zip hợp lệ · 21 502 ký tự · 0 placeholder sót
+         chứa tên khách, số CCCD, ngày sinh 27/02/1979, tên ngân hàng
+```
+
+**Đã dựng hạ tầng chạy được:**
+- ⭐ `backend/scripts/pgctl.ps1` — `initdb`/`start`/`stop`/`reset` cụm riêng ở 55432, không cần quyền admin, mượn nhị phân của bản PostgreSQL cài sẵn. Đây là bản dựng tay của phần "PostgreSQL portable" mà Supervisor sẽ làm ở P5.
+- ⭐ `backend/scripts/bootstrap_templates.py` — nạp 2 mẫu `.docx` thật vào Template Store **qua Use Case thật**, nên `declared_variables` trong CSDL (12 và 9) là thứ Port 20 đọc được, không phải danh sách chép tay.
+
+#### 🔴🔴 Sáu lỗi mà 1532 test xanh không thấy
+
+Cụm CSDL không chạy kể từ P1. Lần `alembic upgrade head` đầu tiên sau đó tìm ra sáu khiếm khuyết — chi tiết đầy đủ ở [`§12.20`](docs/design/12-dac-ta-module.md).
+
+1. **`CHECK (doc_type IN ('DOCX',))`.** `repr` của tuple một phần tử mang dấu phẩy đuôi — cú pháp Python, không phải SQL. Di chứng D2.1 khi `DocType` co còn một thành viên; migration `002` chết ngay bảng `contract_document`. Khuôn `f"… IN {tuple}"` có ở **11 chỗ**; thay bằng `sql_in(column, values)` — bỏ f-string khỏi chỗ gọi thì bẫy không mọc lại được.
+2. **Migration `009` gieo dòng từ khoá ở `match_tier=2`** trong khi `ck_normalization_alias__tier4` đòi tầng 4. Dòng đó **chưa từng vào được database nào**. `assigned_confidence=0.90` cũng là số không đạt được: chỉ tầng 2 đọc cột đó, tầng 4 trả hằng `_KEYWORD_CONFIDENCE = 0.60`. Một dòng seed nói dối về hành vi nó cấu hình.
+3. **`002` dùng `Base.metadata.create_all()`** ⇒ nó tạo schema **hôm nay**, không phải schema tại revision 002. `010` `add_column(identity_markers)` gặp `DuplicateColumnError`; `011` `drop_column(page_count)` sẽ gặp ảnh gương của nó. Sửa: các bước cấu trúc sau `002` **nhận biết trạng thái** (`_column_exists()`). Viết tay DDL 19 bảng sẽ tái tạo đúng drift mà `create_all` tồn tại để ngăn.
+4. **Alembic tự áp `NAMING_CONVENTION`** lên tên truyền vào `drop_constraint` ⇒ `ck_ocr_field__ck_ocr_field__tier_range`. ⚠️ Và **test cũ *yêu cầu* tên đầy đủ** — nó khẳng định đúng cái sai, xanh suốt. Test giờ đảo chiều, cộng một phép kiểm cấm truyền tên đã có tiền tố.
+5. **`ocr_field` INSERT trước `ocr_result`** ⇒ vỡ `fk_ocr_field__ocr_result`, và flush chết ở câu đầu nên INSERT cha **không bao giờ chạy**. Hai mapper không có `relationship()` nên đơn vị công việc của SQLAlchemy không có gì để sắp thứ tự. Sửa: flush cha xong mới thêm con.
+   - ⚠️ Nấp ngay sau nó: `ocr_result.created_at` NOT NULL mà `OcrResultSnapshot` **không có trường đó**. Chỉ lộ ra sau khi sửa lỗi thứ nhất.
+   - ⚠️ Và repository gán **mọi** `IntegrityError` thành `DUPLICATE_OCR_RESULT`, khiến cuộc điều tra đi tìm một dòng không tồn tại. Giờ nó mang theo tên ràng buộc.
+6. **`contract.snapshot_sha256` nhận hash `.docx`** trong khi §4.4.10 định nghĩa nó là "chứng minh **snapshot** không bị sửa" — trùng lặp với `contract_document.file_sha256` và bỏ trống đúng việc nó sinh ra để làm. Nó còn đến **muộn một transaction**: cột NOT NULL, dòng INSERT ở `GENERATING` trước khi render. Sửa: `mark_completed(now)` bỏ tham số, giá trị đặt lúc dựng từ `render_snapshot.digest()`.
+
+⚠️ **Bài học chung:** test đọc `Base.metadata` kiểm *hình dạng khai báo*, không kiểm *thứ database chấp nhận*. Bốn trong sáu lỗi nằm đúng khoảng cách đó.
+
+#### 🔴 Hàng đợi biết mình hỏng ≠ người dùng biết
+
+Job OCR hết 3 lượt thử, ghi `FAILED` đúng chuẩn — mà `ocr_session.status` **vẫn `PROCESSING`**, nên `GET /ocr/{id}/progress` trả "đang xử lý" mãi mãi. Wizard không đi tiếp được và không có gì báo lỗi. `JobRunner` nhận thêm `on_terminal_failure`, Container nối vào `FailOcrSessionUseCase`. Bất biến mới: **một job thất bại lần cuối phải giải phóng đối tượng của nó**, và việc đó phải ở runner — handler đã ném ngoại lệ thì không chạy được nữa.
+
+#### ⚠️ Bẫy mẫu số lần thứ 6 — vẫn trong bộ đo, lần này ở khâu chuẩn bị
+
+`demo_m3_contract.py` ghép cặp ảnh bằng **QR đơn kênh**, và server trả `DUPLICATE_SIDE`. Lý do: trên thẻ 2021 QR nằm ở **mặt trước**, nên "hai ảnh cùng cho ra số CCCD này qua QR" nghĩa là **hai tấm ảnh của cùng một mặt**. Một kênh không ghép được thẻ — nó chỉ gom được ảnh của một mặt. Sửa: QR → mặt trước, MRZ → mặt sau, và **ghi lại kênh nào đọc được**.
+
+Lần thứ 7 ngay sau đó: khi dùng lại khách hàng cũ, script để `bank_account_id = None` và `V-CTR-007` chặn đúng. Chỗ sửa không phải script mà là **phản hồi tra trùng** — nó phải đủ để *đi tiếp*, nên `GET /customers?id_number=…&exact=true` nay trả kèm `bank_accounts[]`.
+
+#### ⭐ Ba quyết định cấu trúc
+
+- **`TemplateStore` là nửa để RÕ của kho lưu trữ, không phải một `VaultCategory`** ([§12.21](docs/design/12-dac-ta-module.md)). `DocxRenderer` mở mẫu **theo đường dẫn** và đệm theo `(path, sha256)`; đi qua `IFileStorage` nghĩa là giải mã 2–3 MB mỗi hợp đồng để trả byte lại cho thứ vốn muốn một file. Và mẫu không chứa dữ liệu khách hàng. Cho hai kho chung interface là cách một hợp đồng bị ghi nhầm sang nửa để rõ.
+- **`warm_up()` gọi trong handler job đầu tiên, qua `asyncio.to_thread`.** `__init__` cố ý không gọi (đúng), nhưng khoảng trống đó khiến job OCR đầu tiên ném `OcrEngineUnavailableError` ba lần. Hàng đợi là chỗ đúng: nó là bên duy nhất cần engine, trả giá một lần, và một model thiếu làm hỏng một job người dùng **nhìn thấy** thay vì một lần khởi động không ai xem (P-08).
+- **`COCAS-3007` kiểm trước khi ghi Vault**, và mang theo `image_id` của ảnh đã có. Trước đó ảnh bị mã hoá, ghi, xác minh rồi mới bị UNIQUE từ chối và xoá đi. Kèm theo: phản hồi giờ đủ để client mời "dùng lại ảnh đã tải".
+
+#### Bốn cổng kiểm tra
+**1634 test xanh (+102)** · ruff sạch (`src tests scripts`) · `mypy --strict` 93 file 0 lỗi · import-linter 4/4. Coverage tầng Application của các Use Case mới: `download_contract_document` **100%**, `manage_customer` **100%**, `read_templates` 98%, `register_template_version` 99%, `upload_card_image` 97%, `manage_ocr_session` 96%, `run_ocr_job` 94%.
+
+#### 🔴 Máy 3.9 GB đã giết tiến trình uvicorn hai lần
+PaddleOCR nạp cùng lúc với một cụm Postgres cấu hình mặc định làm hết RAM; tiến trình bị hệ điều hành kết liễu **không để lại traceback**, chỉ dừng log giữa chừng. Hạ `shared_buffers` xuống 32MB (và `max_connections` xuống 20) là thứ làm nó chạy được. Ghi vào `pgctl.ps1`.
+
+#### Điểm mù còn lại
+- ⚠️ **46/62 endpoint chưa làm** — trong đó có cả `POST /templates` (đăng ký mẫu mới, hiện thực P-06) và toàn bộ nhóm sao lưu/chẩn đoán.
+- ⚠️ **`RETENTION_PURGE` chưa có handler.** Ảnh CCCD **đã** vào Vault (nợ cũ đóng), nhưng chưa gì xoá chúng ⇒ **P-05 vẫn chưa nối xong**, chỉ khác là giờ đã có dữ liệu để xoá.
+- ⚠️ **`SELECT … FOR UPDATE` chạy được nhưng chưa bị đua.** Migration và luồng chính đã trên PostgreSQL thật, nhưng hai hợp đồng đồng thời trên cùng một mẫu thì chưa thử.
+- ⚠️ **Chỉ đo trên thẻ CCCD_CHIP 2021.** Toàn chuỗi trên Căn cước 2024 vẫn chưa chạy lần nào — điểm mù cũ từ P2, chưa đóng.
+- ⚠️ **Tự động hoá `alembic upgrade head` lúc khởi động chưa có** (bootstrap lần đầu của P5). Hiện phải chạy tay.
+
+---
+
 ### ⏳ P4 — Giao diện (3 tuần, song song P3)
 **Status:** TODO  
 **Est. Start:** 2026-09-23  
@@ -711,5 +777,5 @@ Ngân sách §9.11 là "201 sau ~500 ms" ⇒ **đạt, dư gấp đôi**. Mọi 
 
 ---
 
-**Last Updated:** 2026-08-11  
-**Next Review:** Sau P1 completion
+**Last Updated:** 2026-08-12 (P3 module 7 — lát cắt demo, mốc M3 đạt)  
+**Next Review:** Sau khi chốt phạm vi P4

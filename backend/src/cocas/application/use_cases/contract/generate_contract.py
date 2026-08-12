@@ -74,6 +74,7 @@ from cocas.domain.exceptions import (
 from cocas.domain.ports.documents import IDocumentRenderer
 from cocas.domain.ports.storage import IFileStorage, VaultCategory, VaultRef
 from cocas.domain.ports.system import IClock, IIdGenerator
+from cocas.domain.services import render_snapshot
 from cocas.domain.services.contract_number_generator import ContractNumberGenerator
 from cocas.domain.services.export_name_generator import ExportNameGenerator
 from cocas.domain.validation.contract_rules import ContractCandidate, PartyCandidate
@@ -272,7 +273,9 @@ class GenerateContractUseCase:
             export_name = self._export_names.generate(
                 template.export_name_pattern, dict(context), set()
             )
-            contract = self._new_contract(command, version, parties, export_name, draft)
+            contract = self._new_contract(
+                command, version, parties, export_name, draft, context
+            )
 
             uow.contracts.stage_snapshot(dict(context))
             await uow.contracts.add(contract)
@@ -349,7 +352,7 @@ class GenerateContractUseCase:
                     created_at=now,
                 )
             )
-            contract.mark_completed(sha256, now)
+            contract.mark_completed(now)
             await uow.contracts.update(contract, expected_version=contract.version - 1)
             await uow.commit()
             return contract.created_at
@@ -461,6 +464,7 @@ class GenerateContractUseCase:
         parties: Sequence[_ResolvedParty],
         export_name: str,
         draft: ContractDraft,
+        context: Mapping[str, object],
     ) -> Contract:
         now = self._clock.now()
         primary = next(
@@ -484,6 +488,11 @@ class GenerateContractUseCase:
             revision_no=command.revision_no,
             party_count=len(parties),
             extra_variables=dict(command.extra_variables) or None,
+            # ⭐ Set here, not at `mark_completed()`: the column is NOT NULL and
+            # this row is INSERTed before the render runs (§12.14.2). The
+            # snapshot is the render's *input*, so it — and its digest — are
+            # fully known now. See `domain/services/render_snapshot.py`.
+            snapshot_sha256=render_snapshot.digest(context),
         )
         contract.mark_generating(now)
         return contract

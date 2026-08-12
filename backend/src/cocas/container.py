@@ -7,15 +7,40 @@ Every other module must respect the Dependency Rule: Presentation → Applicatio
 """
 from __future__ import annotations
 
+import asyncio
+import uuid
 from pathlib import Path
 
 from sqlalchemy.ext.asyncio import AsyncEngine, async_sessionmaker, create_async_engine
 
 from cocas.application.pipelines.extraction_pipeline import ExtractionPipeline
 from cocas.application.render_context_builder import RenderContextBuilder
+from cocas.application.use_cases.contract.download_contract_document import (
+    DownloadContractDocumentUseCase,
+)
 from cocas.application.use_cases.contract.generate_contract import GenerateContractUseCase
+from cocas.application.use_cases.customer.manage_customer import (
+    CreateCustomerUseCase,
+    FindCustomerByIdNumberUseCase,
+)
+from cocas.application.use_cases.ingestion.upload_card_image import (
+    UploadCardImageUseCase,
+)
+from cocas.application.use_cases.ocr.manage_ocr_session import (
+    OCR_TARGET_TYPE,
+    ConfirmOcrSessionUseCase,
+    CreateOcrSessionUseCase,
+    FailOcrSessionUseCase,
+    GetOcrSessionUseCase,
+    UpdateOcrFieldsUseCase,
+)
 from cocas.application.use_cases.ocr.process_ocr_session import ProcessOcrSessionUseCase
+from cocas.application.use_cases.ocr.run_ocr_job import RunOcrJobUseCase
+from cocas.application.use_cases.template.register_template_version import (
+    RegisterTemplateVersionUseCase,
+)
 from cocas.config.settings import Settings
+from cocas.domain.enums.job_type import JobType
 from cocas.domain.ports.crypto import ICryptoService
 from cocas.domain.ports.storage import IFileStorage
 from cocas.domain.ports.system import IClock, IIdGenerator
@@ -27,6 +52,7 @@ from cocas.domain.validation.engine import ValidationEngine
 from cocas.infrastructure.documents.docx_context_adapter import DocxContextAdapter
 from cocas.infrastructure.documents.docx_renderer import DocxRenderer
 from cocas.infrastructure.documents.template_inspector import DocxTemplateInspector
+from cocas.infrastructure.images.probe import probe as probe_image
 from cocas.infrastructure.logging.loguru_config import configure_logging
 from cocas.infrastructure.ocr.channels.mrz_reader import Td1MrzReader
 from cocas.infrastructure.ocr.channels.qr_decoder import ZxingQrDecoder
@@ -44,9 +70,11 @@ from cocas.infrastructure.persistence.repositories.document_type_repository impo
     SqlAlchemyDocumentTypeRepository,
 )
 from cocas.infrastructure.persistence.unit_of_work import SqlAlchemyUnitOfWork
+from cocas.infrastructure.queue.job_runner import JobRunner
 from cocas.infrastructure.security.crypto import DpapiCryptoService
 from cocas.infrastructure.security.dpapi import DpapiKeyManager
 from cocas.infrastructure.storage.encrypted_file_vault import EncryptedFileVault
+from cocas.infrastructure.storage.template_store import TemplateStore
 from cocas.infrastructure.system.clock import SystemClock
 from cocas.infrastructure.system.id_generator import Uuid7Generator
 
@@ -81,6 +109,12 @@ class Container:
             clock=self.clock,
             id_generator=self.id_generator,
         )
+
+        # ⭐ A **sibling** of the Vault and deliberately unencrypted — see
+        # `TemplateStore`'s docstring. It is not an `IFileStorage`: the two
+        # have different guarantees, and giving them one interface is how a
+        # contract ends up written to the plaintext half.
+        self.template_store = TemplateStore(Path(settings.templates_dir))
 
         self.engine: AsyncEngine = create_async_engine(
             settings.database_url, echo=settings.database_echo
@@ -149,6 +183,13 @@ class Container:
         # registered **empty**, which is a valid report, not a missing key.
         self.validation_engine = ValidationEngine()
 
+        #: Created lazily by `job_runner()` — see there for why it is the one
+        #: singleton among the Use Case factories.
+        self._job_runner: JobRunner | None = None
+
+        #: Whether `ocr_engine.warm_up()` has run — see `ensure_ocr_ready()`.
+        self._ocr_ready = False
+
     def unit_of_work(self) -> SqlAlchemyUnitOfWork:
         """A fresh `IUnitOfWork` per call — one transaction, one `async with` block (§12.14)."""
         return SqlAlchemyUnitOfWork(self.session_factory, self.crypto)
@@ -189,8 +230,134 @@ class Container:
             id_generator=self.id_generator,
         )
 
+    # ---- P3 module 7: the §5.4 endpoint chain -----------------------------
+    #
+    # Each is built per call, for the same reason the two above are: they are
+    # stateless, and an attribute would invite someone to cache a UoW inside.
+
+    def upload_card_image_use_case(self) -> UploadCardImageUseCase:
+        return UploadCardImageUseCase(
+            uow_factory=self.unit_of_work,
+            file_storage=self.file_storage,
+            document_types=self.document_types,
+            probe=probe_image,
+            clock=self.clock,
+            id_generator=self.id_generator,
+        )
+
+    def create_ocr_session_use_case(self) -> CreateOcrSessionUseCase:
+        return CreateOcrSessionUseCase(
+            uow_factory=self.unit_of_work,
+            clock=self.clock,
+            id_generator=self.id_generator,
+        )
+
+    def get_ocr_session_use_case(self) -> GetOcrSessionUseCase:
+        return GetOcrSessionUseCase(uow_factory=self.unit_of_work)
+
+    def update_ocr_fields_use_case(self) -> UpdateOcrFieldsUseCase:
+        return UpdateOcrFieldsUseCase(uow_factory=self.unit_of_work)
+
+    def confirm_ocr_session_use_case(self) -> ConfirmOcrSessionUseCase:
+        return ConfirmOcrSessionUseCase(uow_factory=self.unit_of_work)
+
+    def run_ocr_job_use_case(self) -> RunOcrJobUseCase:
+        return RunOcrJobUseCase(
+            uow_factory=self.unit_of_work,
+            process_session=self.process_ocr_session_use_case(),
+            file_storage=self.file_storage,
+            clock=self.clock,
+        )
+
+    def find_customer_use_case(self) -> FindCustomerByIdNumberUseCase:
+        return FindCustomerByIdNumberUseCase(uow_factory=self.unit_of_work)
+
+    def create_customer_use_case(self) -> CreateCustomerUseCase:
+        return CreateCustomerUseCase(
+            uow_factory=self.unit_of_work,
+            clock=self.clock,
+            id_generator=self.id_generator,
+        )
+
+    def download_contract_document_use_case(self) -> DownloadContractDocumentUseCase:
+        return DownloadContractDocumentUseCase(
+            uow_factory=self.unit_of_work,
+            file_storage=self.file_storage,
+            clock=self.clock,
+        )
+
+    def job_runner(self) -> JobRunner:
+        """⭐ A singleton, unlike every other factory on this class.
+
+        The runner owns a background `asyncio.Task`; a second instance would
+        be a second poller against the same table. `SKIP LOCKED` means they
+        would not corrupt anything — they would just both be running OCR on a
+        4 GB machine, which constraint #9 says produces `Insufficient memory`
+        from inside OpenCV.
+        """
+        if self._job_runner is None:
+            self._job_runner = JobRunner(
+                uow_factory=self.unit_of_work,
+                clock=self.clock,
+                handlers={JobType.OCR: self._handle_ocr_job},
+                on_terminal_failure=self._release_job_target,
+            )
+        return self._job_runner
+
+    async def _handle_ocr_job(
+        self, job_id: uuid.UUID, payload: dict[str, object]
+    ) -> None:
+        await self.ensure_ocr_ready()
+        await self.run_ocr_job_use_case().execute(job_id, payload)
+
+    async def ensure_ocr_ready(self) -> None:
+        """Load the OCR models once, off the event loop.
+
+        ⭐ `__init__` deliberately does not do this (see `self.ocr_engine`), and
+        the first end-to-end run showed why the gap needed filling somewhere:
+        the first OCR job raised `OcrEngineUnavailableError` three times and the
+        session ended `FAILED` with the models still on disk. The queue is the
+        right place — it is the only caller that needs the engine, the cost is
+        paid once, and a missing model file fails a job the user can see rather
+        than a startup nobody is watching (P-08).
+
+        ⚠️ `asyncio.to_thread`, because `warm_up()` blocks for several seconds
+        reading weights. On the event loop that would stall every in-flight
+        HTTP request — including the `/health` probe the supervisor uses to
+        decide whether this process is alive.
+        """
+        if self._ocr_ready:
+            return
+        await asyncio.to_thread(self.ocr_engine.warm_up)
+        self._ocr_ready = True
+
+    async def _release_job_target(
+        self, target_type: str, target_id: uuid.UUID, code: str, detail: str
+    ) -> None:
+        """Move a job's subject out of its in-progress state after final failure."""
+        if target_type == OCR_TARGET_TYPE:
+            await FailOcrSessionUseCase(self.unit_of_work, self.clock).execute(
+                target_id, code, detail
+            )
+
+    def register_template_version_use_case(self) -> RegisterTemplateVersionUseCase:
+        """Upload + activate one `.docx` version of a registered template."""
+        return RegisterTemplateVersionUseCase(
+            uow_factory=self.unit_of_work,
+            inspector=self.template_inspector,
+            template_store=self.template_store,
+            clock=self.clock,
+            id_generator=self.id_generator,
+        )
+
     async def close(self) -> None:
-        """Release the DB connection pool on shutdown."""
+        """Stop the runner, then release the DB connection pool."""
+        if self._job_runner is not None:
+            # ⚠️ Before `engine.dispose()`. A job still in flight needs its
+            # connection to write its outcome; disposing first turns a clean
+            # shutdown into a job stuck at `RUNNING` until the stale sweep.
+            await self._job_runner.stop()
+            self._job_runner = None
         await self.engine.dispose()
 
 

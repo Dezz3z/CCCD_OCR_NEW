@@ -1,6 +1,8 @@
 """`SqlAlchemyCardImageRepository` — implements `IReadRepository`/`IWriteRepository` for `CardImage`."""
 from __future__ import annotations
 
+from sqlalchemy import select
+
 from cocas.domain.entities.card_image import CardImage
 from cocas.domain.enums.card_side import CardSide
 from cocas.domain.value_objects.confidence_score import ConfidenceScore
@@ -10,6 +12,19 @@ from cocas.infrastructure.persistence.repositories._base import SqlAlchemyReposi
 
 class SqlAlchemyCardImageRepository(SqlAlchemyRepository[CardImage, CardImageModel]):
     model = CardImageModel
+
+    async def find_by_sha256(self, digest: bytes) -> CardImage | None:
+        """The image with this content, if one is already stored (`COCAS-3007`).
+
+        ⭐ Lets the caller answer *before* encrypting 900 KB into the Vault and
+        then deleting it again when the UNIQUE index refuses the row. The
+        constraint is still the authority — two simultaneous uploads of the
+        same photo can both pass this check — but the common case stops paying
+        for a write nobody keeps.
+        """
+        statement = select(self.model).where(self.model.sha256 == digest)
+        row = (await self._session.execute(statement)).scalar_one_or_none()
+        return self._to_domain(row) if row is not None else None
 
     def _to_domain(self, row: CardImageModel) -> CardImage:
         return CardImage(

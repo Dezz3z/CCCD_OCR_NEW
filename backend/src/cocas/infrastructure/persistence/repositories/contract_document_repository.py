@@ -6,6 +6,11 @@ UUID-based Vault reference that says nothing about the customer.
 """
 from __future__ import annotations
 
+import uuid
+from datetime import datetime
+
+from sqlalchemy import select
+
 from cocas.domain.entities.contract_document import ContractDocument
 from cocas.domain.enums.doc_type import DocType
 from cocas.infrastructure.persistence.models.contract_document import ContractDocumentModel
@@ -16,6 +21,36 @@ class SqlAlchemyContractDocumentRepository(
     SqlAlchemyRepository[ContractDocument, ContractDocumentModel]
 ):
     model = ContractDocumentModel
+
+    async def get_for_contract(
+        self, contract_id: uuid.UUID, doc_type: DocType = DocType.DOCX
+    ) -> ContractDocument | None:
+        """The one document of a given type for a contract (§5.3.9).
+
+        `uq_contract_document__type` makes "the one" literal — at most one row
+        can exist per `(contract_id, doc_type)`.
+        """
+        statement = select(self.model).where(
+            self.model.contract_id == contract_id,
+            self.model.doc_type == doc_type.value,
+        )
+        row = (await self._session.execute(statement)).scalar_one_or_none()
+        return self._to_domain(row) if row is not None else None
+
+    async def record_download(self, document_id: uuid.UUID, now: datetime) -> None:
+        """Bump `download_count` / `last_downloaded_at` (§4.4.12).
+
+        ⚠️ An `UPDATE … SET download_count = download_count + 1`, not a
+        read-modify-write through the entity: two concurrent downloads of the
+        same contract would otherwise both read `n` and both write `n + 1`.
+        The counter feeds the activity log, so an undercount is a gap in an
+        audit trail rather than a cosmetic bug.
+        """
+        row = await self._session.get(self.model, document_id)
+        if row is None:
+            return
+        row.download_count = self.model.download_count + 1  # type: ignore[assignment]
+        row.last_downloaded_at = now
 
     def _to_domain(self, row: ContractDocumentModel) -> ContractDocument:
         return ContractDocument(

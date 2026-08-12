@@ -9,6 +9,7 @@ from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
+from datetime import datetime
 from types import TracebackType
 from typing import Generic, Protocol, TypeVar, runtime_checkable
 
@@ -178,6 +179,13 @@ class OcrResultSnapshot:
     read, `0` means one was read and needed no repair. §7.5's repair rate
     divides by the second."""
     cross_check_flags: tuple[str, ...] = ()
+    created_at: datetime | None = None
+    """⭐ `ocr_result.created_at` — NOT NULL with no server default, so the
+    caller must supply it from `IClock` (P-09: a frozen clock has to produce a
+    reproducible row). Optional in the type only because adding it as a
+    required field would reorder this dataclass's positional arguments; the
+    repository refuses to insert without it rather than substituting
+    `datetime.now()`."""
 
 
 @runtime_checkable

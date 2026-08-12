@@ -14,6 +14,9 @@ from cocas.domain.ports.crypto import ICryptoService
 from cocas.infrastructure.persistence.repositories.bank_account_repository import (
     SqlAlchemyBankAccountRepository,
 )
+from cocas.infrastructure.persistence.repositories.bank_directory_repository import (
+    SqlAlchemyBankDirectoryRepository,
+)
 from cocas.infrastructure.persistence.repositories.card_image_repository import (
     SqlAlchemyCardImageRepository,
 )
@@ -28,6 +31,9 @@ from cocas.infrastructure.persistence.repositories.contract_repository import (
 )
 from cocas.infrastructure.persistence.repositories.customer_repository import (
     SqlAlchemyCustomerRepository,
+)
+from cocas.infrastructure.persistence.repositories.job_repository import (
+    SqlAlchemyJobRepository,
 )
 from cocas.infrastructure.persistence.repositories.ocr_result_repository import (
     SqlAlchemyOcrResultRepository,
@@ -70,6 +76,8 @@ class SqlAlchemyUnitOfWork:
         self.contract_documents = SqlAlchemyContractDocumentRepository(self._session)
         self.customers = SqlAlchemyCustomerRepository(self._session, self._crypto)
         self.bank_accounts = SqlAlchemyBankAccountRepository(self._session, self._crypto)
+        self.jobs = SqlAlchemyJobRepository(self._session)
+        self.banks = SqlAlchemyBankDirectoryRepository(self._session)
         return self
 
     async def __aexit__(

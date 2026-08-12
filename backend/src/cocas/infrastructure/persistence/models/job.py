@@ -11,7 +11,7 @@ from sqlalchemy.orm import Mapped, mapped_column
 
 from cocas.domain.enums.job_status import JobStatus
 from cocas.domain.enums.job_type import JobType
-from cocas.infrastructure.persistence.models.base import Base, CreatedAtMixin, UuidPkMixin
+from cocas.infrastructure.persistence.models.base import Base, CreatedAtMixin, UuidPkMixin, sql_in
 
 _JOB_TYPE_VALUES = tuple(t.value for t in JobType)
 _JOB_STATUS_VALUES = tuple(s.value for s in JobStatus)
@@ -20,8 +20,8 @@ _JOB_STATUS_VALUES = tuple(s.value for s in JobStatus)
 class JobModel(UuidPkMixin, CreatedAtMixin, Base):
     __tablename__ = "job"
     __table_args__ = (
-        CheckConstraint(f"job_type IN {_JOB_TYPE_VALUES}", name="job_type_valid"),
-        CheckConstraint(f"status IN {_JOB_STATUS_VALUES}", name="status_valid"),
+        CheckConstraint(sql_in("job_type", _JOB_TYPE_VALUES), name="job_type_valid"),
+        CheckConstraint(sql_in("status", _JOB_STATUS_VALUES), name="status_valid"),
         CheckConstraint(
             "progress_percent IS NULL OR progress_percent BETWEEN 0 AND 100", name="progress_range"
         ),

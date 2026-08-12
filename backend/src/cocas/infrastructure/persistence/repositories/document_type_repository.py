@@ -19,6 +19,7 @@ its consumer is a long-lived pipeline, not one Use Case's transaction.
 """
 from __future__ import annotations
 
+import uuid
 from collections.abc import Sequence
 
 from sqlalchemy import select
@@ -73,6 +74,31 @@ class SqlAlchemyDocumentTypeRepository:
             if spec.code == code:
                 return spec
         return None
+
+    async def ids_by_code(self) -> dict[str, uuid.UUID]:
+        """`code -> document_type.id` for the extractable types.
+
+        ⚠️ Separate from `list_extractable()` on purpose, and deliberately not
+        added to `DocumentTypeSpec`. The pipeline must never see a row id: the
+        generation is decided from the text on the card (§7.4.7), and a spec
+        carrying its own primary key is an invitation to key business logic off
+        it. The **persistence** side does need the id, because `card_image` and
+        `ocr_session` both hold a NOT NULL FK to it.
+        """
+        statement = (
+            select(DocumentTypeModel.code, DocumentTypeModel.id)
+            .where(
+                DocumentTypeModel.is_active.is_(True),
+                DocumentTypeModel.is_ocr_supported.is_(True),
+            )
+            .order_by(DocumentTypeModel.created_at, DocumentTypeModel.code)
+        )
+        try:
+            async with self._session_factory() as session:
+                rows = (await session.execute(statement)).all()
+        except OperationalError as exc:  # pragma: no cover - needs a dead DB
+            raise DatabaseUnavailableError("Không kết nối được cơ sở dữ liệu.") from exc
+        return dict(rows)
 
     def invalidate(self) -> None:
         """Drop the cache — for tests and for a migration applied while running."""

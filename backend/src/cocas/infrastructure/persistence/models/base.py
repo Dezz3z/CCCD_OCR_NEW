@@ -9,6 +9,7 @@ which needs no live database and catches regressions fast.
 from __future__ import annotations
 
 import uuid
+from collections.abc import Iterable
 from datetime import datetime
 from typing import Any, ClassVar
 
@@ -27,6 +28,25 @@ NAMING_CONVENTION = {
     "fk": "fk_%(table_name)s__%(referred_table_name)s",
     "pk": "pk_%(table_name)s",
 }
+
+
+def sql_in(column: str, values: Iterable[str]) -> str:
+    """Render `column IN ('A', 'B')` for a `CheckConstraint`.
+
+    ⭐ Never interpolate a Python tuple into the constraint text. The `repr`
+    of a **one-element** tuple is `('DOCX',)`, and that trailing comma is
+    Python syntax, not SQL — PostgreSQL rejects it with `syntax error at or
+    near ")"`. D2.1 produced exactly that: removing PDF shrank `DocType` to a
+    single member, and `CREATE TABLE contract_document` began failing at
+    `alembic upgrade head` while **every** metadata test stayed green, because
+    those tests read the constraint's *text* without ever asking a database to
+    parse it. The bug survived a full test suite and a commit; it took one
+    real `upgrade head` to surface.
+
+    Taking the column name as a parameter is the point: it leaves no f-string
+    at the call sites, so the trap has nowhere to grow back.
+    """
+    return f"{column} IN (" + ", ".join(f"'{value}'" for value in values) + ")"
 
 
 class Base(DeclarativeBase):

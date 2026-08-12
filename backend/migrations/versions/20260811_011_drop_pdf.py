@@ -34,6 +34,8 @@ Create Date: 2026-08-11
 import sqlalchemy as sa
 from alembic import op
 
+from cocas.infrastructure.persistence.models.base import sql_in
+
 # revision identifiers, used by Alembic.
 revision = "20260811_011_drop_pdf"
 down_revision = "20260811_010_markers_tier5"
@@ -62,9 +64,27 @@ _DEAD_SETTING_KEYS = (
 
 
 def _replace_check(table: str, name: str, expression: str) -> None:
-    """Drop then re-create a CHECK; `name` is the short form (no `ck_<table>__`)."""
-    op.drop_constraint(f"ck_{table}__{name}", table, type_="check")
+    """Drop then re-create a CHECK; `name` is the short form (no `ck_<table>__`).
+
+    ⚠️ Both calls take the SHORT name. The docstring said so and the code then
+    expanded it anyway — `env.py` supplies `target_metadata`, so `op` applies
+    `NAMING_CONVENTION` itself and `f"ck_{table}__{name}"` came back out as
+    `ck_contract__ck_contract__status_valid`. Measured 2026-08-12.
+    """
+    op.drop_constraint(name, table, type_="check")
     op.create_check_constraint(name, table, expression)
+
+
+def _column_exists(table: str, column: str) -> bool:
+    """Whether `table.column` is present in the live database right now.
+
+    Needed because revision 002 runs `Base.metadata.create_all()` and therefore
+    materialises **today's** models — see its docstring. `page_count` is gone
+    from the models, so a fresh database never had it and the `drop_column`
+    below has nothing to drop; a database created before D2.1 does have it.
+    """
+    inspector = sa.inspect(op.get_bind())
+    return any(col["name"] == column for col in inspector.get_columns(table))
 
 
 def upgrade() -> None:
@@ -84,13 +104,20 @@ def upgrade() -> None:
     )
 
     # 2 — then the constraints.
-    _replace_check("contract", "status_valid", f"status IN {_NEW_CONTRACT_STATUS}")
-    _replace_check("job", "job_type_valid", f"job_type IN {_NEW_JOB_TYPE}")
+    #
+    # ⭐ `sql_in`, not an f-string around the tuple: `_NEW_DOC_TYPE` has exactly
+    # one member, and `repr(("DOCX",))` is `('DOCX',)` — the trailing comma is
+    # Python, not SQL, and PostgreSQL answers `syntax error at or near ")"`.
+    # The same defect shipped in `contract_document`'s model CHECK and broke
+    # revision 002 outright; this copy sat one revision downstream, waiting.
+    _replace_check("contract", "status_valid", sql_in("status", _NEW_CONTRACT_STATUS))
+    _replace_check("job", "job_type_valid", sql_in("job_type", _NEW_JOB_TYPE))
     _replace_check(
-        "contract_document", "doc_type_valid", f"doc_type IN {_NEW_DOC_TYPE}"
+        "contract_document", "doc_type_valid", sql_in("doc_type", _NEW_DOC_TYPE)
     )
 
-    op.drop_column("contract_document", "page_count")
+    if _column_exists("contract_document", "page_count"):
+        op.drop_column("contract_document", "page_count")
 
 
 def downgrade() -> None:
@@ -98,11 +125,13 @@ def downgrade() -> None:
     # gives you a schema that *accepts* PDF again, not a database that
     # remembers the PDFs it had — that data is gone with the D2.1 decision and
     # inventing rows here would be worse than an honest gap.
-    op.add_column(
-        "contract_document", sa.Column("page_count", sa.SmallInteger(), nullable=True)
-    )
-    _replace_check("contract", "status_valid", f"status IN {_OLD_CONTRACT_STATUS}")
-    _replace_check("job", "job_type_valid", f"job_type IN {_OLD_JOB_TYPE}")
+    if not _column_exists("contract_document", "page_count"):
+        op.add_column(
+            "contract_document",
+            sa.Column("page_count", sa.SmallInteger(), nullable=True),
+        )
+    _replace_check("contract", "status_valid", sql_in("status", _OLD_CONTRACT_STATUS))
+    _replace_check("job", "job_type_valid", sql_in("job_type", _OLD_JOB_TYPE))
     _replace_check(
-        "contract_document", "doc_type_valid", f"doc_type IN {_OLD_DOC_TYPE}"
+        "contract_document", "doc_type_valid", sql_in("doc_type", _OLD_DOC_TYPE)
     )

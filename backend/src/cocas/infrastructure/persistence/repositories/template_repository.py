@@ -13,6 +13,22 @@ from cocas.infrastructure.persistence.repositories._base import SqlAlchemyReposi
 class SqlAlchemyTemplateRepository(SqlAlchemyRepository[Template, ContractTemplateModel]):
     model = ContractTemplateModel
 
+    async def list_active(self) -> list[Template]:
+        """Templates the user may pick from, in the order the UI shows them.
+
+        ⚠️ Filters `deleted_at IS NULL` **and** `is_active` — they are not the
+        same fact. A deactivated template is hidden from new contracts but its
+        old contracts must still regenerate (P-09), which is why deactivating
+        is not deleting and why both columns exist.
+        """
+        statement = (
+            select(self.model)
+            .where(self.model.deleted_at.is_(None), self.model.is_active.is_(True))
+            .order_by(self.model.sort_order, self.model.code)
+        )
+        rows = (await self._session.execute(statement)).scalars().all()
+        return [self._to_domain(row) for row in rows]
+
     async def get_for_update(self, template_id: uuid.UUID) -> Template | None:
         """⭐ `SELECT … FOR UPDATE` — the row lock `contract_no_seq` needs (DB-09).
 

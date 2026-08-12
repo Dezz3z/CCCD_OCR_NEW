@@ -1,6 +1,10 @@
 """`SqlAlchemyTemplateVersionRepository`."""
 from __future__ import annotations
 
+import uuid
+
+from sqlalchemy import select
+
 from cocas.domain.entities.template_version import TemplateVersion
 from cocas.domain.enums.template_validation_status import TemplateValidationStatus
 from cocas.infrastructure.persistence.models.template_version import TemplateVersionModel
@@ -9,6 +13,24 @@ from cocas.infrastructure.persistence.repositories._base import SqlAlchemyReposi
 
 class SqlAlchemyTemplateVersionRepository(SqlAlchemyRepository[TemplateVersion, TemplateVersionModel]):
     model = TemplateVersionModel
+
+    async def list_for_template(self, template_id: uuid.UUID) -> list[TemplateVersion]:
+        """Every version of one template, newest `version_no` first.
+
+        ⭐ Not expressed as a `Specification`: `uq_template_version__no` makes
+        `(template_id, version_no)` the natural ordering key, and the callers
+        (activate, "what is the next version number", the versions list in
+        §5.3.10) all want the whole short list rather than a page of it. A
+        template with enough versions to need paging is not a template — it is
+        a symptom.
+        """
+        statement = (
+            select(self.model)
+            .where(self.model.template_id == template_id)
+            .order_by(self.model.version_no.desc())
+        )
+        rows = (await self._session.execute(statement)).scalars().all()
+        return [self._to_domain(row) for row in rows]
 
     def _to_domain(self, row: TemplateVersionModel) -> TemplateVersion:
         return TemplateVersion(

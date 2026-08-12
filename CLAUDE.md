@@ -73,7 +73,7 @@ Vi phạm = phải sửa, không phải tranh luận.
 | | Số lượng |
 |---|---|
 | Bảng CSDL | **19** |
-| Endpoint API | ⭐ **62** *(D2.1: −2 endpoint PDF)* |
+| Endpoint API | ⭐ **62** *(D2.1: −2 endpoint PDF)* — **đã làm 16** (đúng tập §5.4 gọi) |
 | Wireframe | **8** |
 | Quy tắc validation | **56** |
 | Port (interface) | ⭐ **19** *(đánh số 1–20, **khuyết 13** — `IPdfConverter` gỡ ở D2.1; `ITemplateInspector` thêm ở P3 module 3)* |
@@ -108,6 +108,8 @@ Vi phạm = phải sửa, không phải tranh luận.
 - Ghim tuyệt đối: `paddlepaddle`, `paddleocr`, `numpy` (`>=1.26,<2.0`).
 - Mọi thao tác file: **write-temp → verify SHA-256 → rename**.
 - Mọi Port phải có ít nhất một hiện thực fake/null dùng trong test.
+- ⭐ **Ràng buộc SQL: dùng `sql_in(column, values)`, không f-string quanh tuple.** `repr(("X",))` là `('X',)` — dấu phẩy đuôi là Python, không phải SQL.
+- ⭐ **`op.drop_constraint` nhận tên NGẮN.** Alembic tự áp `NAMING_CONVENTION`; truyền tên đầy đủ ra `ck_x__ck_x__y`.
 
 ## Kiểm tra bắt buộc trong CI
 
@@ -128,20 +130,52 @@ Vi phạm = phải sửa, không phải tranh luận.
 
 **Giai đoạn 1 (Thiết kế): ✅ HOÀN THÀNH** — tài liệu **D2.1** (D2.0 + gỡ PDF), 0 lỗi kiến trúc đã biết.
 
+### ⭐ Chạy hệ thống trên máy này
+
+```powershell
+powershell -File backend\scripts\pgctl.ps1 start          # cụm riêng ở cổng 55432
+cd backend\migrations; alembic upgrade head; cd ..
+python scripts\bootstrap_templates.py                     # nạp 2 mẫu .docx vào kho
+python -m uvicorn cocas.main:create_app --factory --port 8000
+python scripts\demo_m3_contract.py                        # cửa sổ khác — trọn §5.4
+```
+
+⚠️ **Cụm 55432 do `pgctl.ps1` dựng, không phải cụm PostgreSQL nào khác trên máy.** Nó mượn nhị phân của bản cài sẵn (PG 18.4, thiết kế ghi PG16 — chưa thấy khác biệt nào) và có thư mục dữ liệu riêng ở `%LOCALAPPDATA%\COCAS\pgdata`, `shared_buffers = 32MB`.
+
+🔴 **Máy này 3.9 GB RAM và đã giết tiến trình uvicorn hai lần** khi PaddleOCR nạp cùng lúc với một cụm Postgres cấu hình mặc định. Hạ `shared_buffers` xuống 32MB là thứ làm nó chạy được. Đừng chạy song song hai tiến trình có PaddleOCR (ràng buộc #9).
+
 **Giai đoạn 2 (Triển khai): P0 ✅ + P1 ✅ HOÀN THÀNH (2026-08-09). P2 (OCR) mã nguồn ✅ xong 2026-08-11 — tuần 1 (tiền xử lý ảnh) + tuần 2 (kênh QR/MRZ) + tuần 3 (engine + phân loại mặt + trích trường) + tuần 3b (thế hệ thẻ thứ hai) + tuần 4 (chuẩn hoá + hợp nhất + validation) + tầng 5 `issue_place`. Còn lại của P2 là Golden Set.**
 
-⭐ **P3 (Nghiệp vụ) ĐANG LÀM — module 5/6 xong 2026-08-11.** Module 1 `ExtractionPipeline`; module 2 alias/document-type/ocr-result repository + `ProcessOcrSessionUseCase`; module 3 `DocxTemplateInspector` (**Port 20**, AST Jinja2, 10 mã chẩn đoán, chặn SSTI); module 4 **sinh `.docx` thật** — `RenderContextBuilder` + `DocxContextAdapter` + `DocxRenderer` (**Port 12**) + repo `Contract`/`ContractDocument`; ⭐ module 6 **`EncryptedFileVault` (Port 11) + `GenerateContractUseCase`** — 10 quy tắc `V-CTR-*`, hợp đồng đi trọn `GENERATING → COMPLETED`, file nằm trong Vault mã hoá. ⭐ **D2.1 gỡ hẳn module 5 (PDF/LibreOffice) khỏi kế hoạch** — nên module 6 là mảnh áp chót; còn lại **module 7 (62 endpoint)**. **1499 test xanh.**
+⭐ **P3 (Nghiệp vụ) — module 6/6 xong 2026-08-12; module 7 làm được lát cắt demo.** Module 1 `ExtractionPipeline`; module 2 alias/document-type/ocr-result repository + `ProcessOcrSessionUseCase`; module 3 `DocxTemplateInspector` (**Port 20**, AST Jinja2, 10 mã chẩn đoán, chặn SSTI); module 4 **sinh `.docx` thật**; module 6 **`EncryptedFileVault` (Port 11) + `GenerateContractUseCase`**. ⭐ **D2.1 gỡ hẳn module 5 (PDF/LibreOffice) khỏi kế hoạch.**
+
+⭐⭐ **Mốc demo M3 ĐẠT (2026-08-12).** `backend/scripts/demo_m3_contract.py` đi trọn **16 lượt gọi của §5.4 qua HTTP thật** trên **PostgreSQL thật**: 2 ảnh CCCD → OCR 6/6 trường → khách hàng + TK ngân hàng → hợp đồng → `.docx` tải về, mở được bằng Word, **0 placeholder sót**. **1634 test xanh.**
+
+⭐ **Module 7 mới làm 16/62 endpoint** — đúng tập §5.4 gọi. 46 endpoint còn lại là quản trị/tra cứu/chẩn đoán, không nằm trên đường từ 2 ảnh tới `.docx`. Danh sách đã làm nằm trong docstring của [`routers/__init__.py`](backend/src/cocas/presentation/api/v1/routers/__init__.py).
+
 Chi tiết đầy đủ từng module — xem [progress.md](progress.md) (cập nhật theo từng module, không rút gọn).
 
-### Kiến trúc đã triển khai (P0 + P1 + P2 + P3 module 1–4, 6)
+### 🔴🔴 Sáu lỗi chỉ lộ ra ở lần chạy PostgreSQL thật đầu tiên kể từ P1
+
+Cụm CSDL không chạy được suốt P2 và P3 module 1–6, nên tất cả được kiểm bằng repository giả. Lần `alembic upgrade head` đầu tiên (2026-08-12) tìm ra **sáu** khiếm khuyết mà **1532 test xanh không thấy cái nào** — chi tiết ở [`12-dac-ta-module.md §12.20`](docs/design/12-dac-ta-module.md).
+
+1. **`CHECK (doc_type IN ('DOCX',))`** — `repr` của tuple một phần tử có dấu phẩy đuôi; đó là cú pháp Python, không phải SQL. Di chứng của D2.1 khi `DocType` co còn một thành viên. Khuôn `f"… IN {tuple}"` có ở **11 chỗ**, nay thay bằng `sql_in(column, values)` — không còn f-string ở chỗ gọi thì bẫy không mọc lại được.
+2. **Migration `009` gieo dòng từ khoá ở `match_tier=2`** trong khi bất biến là "có `keywords` ⇒ tầng 4". Nó **chưa từng vào được database nào**, nên sửa tại chỗ là đúng. `assigned_confidence=0.90` cũng không thể đạt: chỉ tầng 2 đọc cột đó, tầng 4 trả hằng `0.60`.
+3. **`002` dùng `Base.metadata.create_all()`** ⇒ nó tạo schema **hôm nay**, không phải schema tại revision 002. Mọi `ALTER` sau đó phải **nhận biết trạng thái** (`_column_exists()`). Viết tay DDL 19 bảng sẽ tái tạo đúng thứ drift mà `create_all` tồn tại để ngăn.
+4. **Alembic tự áp `NAMING_CONVENTION`** lên tên truyền vào `drop_constraint` ⇒ truyền tên đầy đủ ra `ck_x__ck_x__y`. ⚠️ **Test cũ *yêu cầu* tên đầy đủ** — nó khẳng định đúng cái sai, và xanh suốt.
+5. **`ocr_field` INSERT trước `ocr_result`** ⇒ vỡ `fk_ocr_field__ocr_result`. Hai mapper không có `relationship()` nên SQLAlchemy không có gì để sắp thứ tự. Sửa: flush cha trước, rồi mới thêm con. ⚠️ Đi kèm: `ocr_result.created_at` NOT NULL mà `OcrResultSnapshot` không có trường đó — lỗi thứ hai nấp sau lỗi thứ nhất.
+6. **`contract.snapshot_sha256` nhận hash `.docx`** trong khi §4.4.10 định nghĩa nó là "chứng minh **snapshot** không bị sửa", và nhận **muộn một transaction** (cột NOT NULL, dòng INSERT ở `GENERATING`). Sửa: `mark_completed(now)` bỏ tham số; giá trị đặt lúc dựng từ `render_snapshot.digest()`.
+
+⚠️ **Bài học chung:** một test đọc `Base.metadata` kiểm *hình dạng khai báo*, không kiểm *thứ database chấp nhận*. Bốn trong sáu lỗi trên nằm đúng khoảng cách đó. Trùng với [[feedback-real-infra-testing]].
+
+### Kiến trúc đã triển khai (P0 + P1 + P2 + P3 module 1–4, 6, 7-demo)
 
 | Tầng | Trạng thái |
 |---|---|
 | `domain/` | ✅ Đầy đủ — 10 Value Object · 14 enum · ⭐ **9 Entity** · **7 Domain Service** (⭐ `IssuePlaceNormalizer` **5 tầng** với `issue_place_shape.py`) + ⭐ **từ điển 28 biến template** (`template_variables.py`) + ⭐ **`value_formatter.py`** (bảng định dạng §9.7, 11 kiểu, có đọc số tiền thành chữ) · ⭐ **19 Port** (+ fake/null cho mỗi Port; đánh số 1–20 khuyết 13) · cây ngoại lệ · ⭐ **`validation/`**: `ValidationEngine` + registry 4 tập quy tắc + **23 quy tắc `V-OCR-*`** + ⭐ **10 quy tắc `V-CTR-*`** (`contract_rules.py`, module 6 — **9/10 chặn cứng**, ngược tỉ lệ với `V-OCR-*` và có lý do); 2 tập còn lại đăng ký **rỗng**, không phải thiếu |
-| `infrastructure/` | Một phần — **persistence** (19 bảng, **10 migration**, ⭐ **9/9 repository** + UnitOfWork — repo `Contract`/`ContractDocument` đã xong ở module 4, hết nợ P1) · **security** (DPAPI thật + AES-256-GCM + blind index) · **logging** (Loguru 3 sink + PII filter 2 lớp) · **system** · ⭐ **ocr đầy đủ 8/8 Port OCR**: `preprocessing` · `channels` (`ZxingQrDecoder`, `Td1MrzReader`) · `engines` (`PaddleOcrAdapter`) · `classification` (`HeuristicSideClassifier`, ⭐ `MarkerDocumentTypeSelector`) · `extraction` · `text_matching.py` · ⭐ **documents đủ 3/3**: `DocxTemplateInspector` (Port 20) · `DocxContextAdapter` · `DocxRenderer` (Port 12) · ⭐ **storage đủ 2/2**: `path_guard.py` + `EncryptedFileVault` (**Port 11**, VAULT_KEY riêng). Chưa có: **queue** |
-| `application/` | ⭐ Một phần — `dto/extraction.py` · ⭐ `dto/contract.py` (`ContractDraft`/`PartyDraft` + `GenerateContractCommand`/`GeneratedContract`) · `pipelines/extraction_pipeline.py` (9 chặng S3→S11) · ⭐ **`render_context_builder.py`** (8 bước §9.6 + `assert_render_safe`) · ⭐ **`use_cases/ocr/process_ocr_session.py`** (2 transaction kẹp lượt OCR — ngoại lệ §12.14.1) · ⭐ **`use_cases/contract/generate_contract.py`** (trọn §9.11; 2 transaction — ngoại lệ §12.14.2, **lý do khác**). Use Case còn lại vẫn rỗng |
-| `presentation/` | Một phần — middlewares (CORS, security headers, correlation-id, local token) · chưa có router/endpoint nào (⭐ 62 endpoint là việc P3 module 7) |
-| `container.py` | ✅ Composition Root — ⭐ **đã nối trọn chuỗi OCR** (8 adapter P2 + `ExtractionPipeline` + `process_ocr_session_use_case()`) **và trọn chuỗi sinh hợp đồng** (`template_inspector` + `document_renderer` + `render_context_builder` + `docx_context_adapter` + ⭐ `file_storage` + `validation_engine` + ⭐ **`generate_contract_use_case()`**). ⚠️ `warm_up()` cố ý không gọi ở đây; ⭐ `DocxRenderer` là **singleton vì bộ nhớ đệm của nó**; ⭐ Vault nhận **`crypto.vault_key`**, không nhận `crypto` |
+| `infrastructure/` | ⭐ Gần đủ — **persistence** (19 bảng, **11 migration đã chạy thật**, ⭐ **12 repository** + UnitOfWork; thêm ở module 7: `job_repository` (`FOR UPDATE SKIP LOCKED`), `bank_directory_repository`, và các phép đọc còn thiếu — `ocr_result.get_by_session/correct_field`, `customer.find_by_id_number` (blind index), `template.list_active`, `contract_document.get_for_contract`) · **security** · **logging** · **system** · ⭐ **ocr 8/8** · ⭐ **documents 3/3** · ⭐ **storage 3/3**: `path_guard.py` + `EncryptedFileVault` (**Port 11**) + ⭐ `template_store.py` (**nửa để rõ**, §12.21) · ⭐ **images**: `probe.py` (magic bytes, `COCAS-3003`) · ⭐ **queue**: `job_runner.py` (polling 500 ms). Chưa có: **backup** |
+| `application/` | ⭐ Gần đủ cho luồng chính — `dto/` · `pipelines/` · `render_context_builder.py` · Use Case: ⭐ **`ocr/`** (`process_ocr_session`, `manage_ocr_session` ×5, `run_ocr_job`) · **`contract/`** (`generate_contract`, `download_contract_document`) · ⭐ **`ingestion/upload_card_image`** · ⭐ **`customer/manage_customer`** · ⭐ **`template/`** (`register_template_version`, `read_templates`). Còn rỗng: `backup`, `bank_account`, `reference`, `system` |
+| `presentation/` | ⭐ Một phần — ⭐ **`errors.py`** (vỏ §5.1.4 + bảng mã §5.1.5 + 3 handler) · ⭐ **`dependencies.py`** · ⭐ middlewares **hiện thực thật** (correlation-id `ContextVar`, local token `compare_digest` — trước đó cả hai là stub rỗng từ P1) · ⭐ **16/62 endpoint** trong `api/v1/routers/` |
+| `container.py` | ✅ Composition Root — ⭐ **trọn chuỗi OCR**, **trọn chuỗi sinh hợp đồng**, và ⭐ **trọn 10 factory Use Case của module 7** + `template_store` + `job_runner()`. ⚠️ `warm_up()` vẫn không gọi trong `__init__` — nay do ⭐ `ensure_ocr_ready()` gọi trong handler job đầu tiên qua `asyncio.to_thread`; ⭐ `job_runner()` là **singleton duy nhất** trong đám factory; `close()` dừng runner **trước** khi dispose pool |
 
 ⭐ Mốc demo M1 (roadmap §14.3) đã đạt: [`backend/scripts/demo_m1_customer.py`](backend/scripts/demo_m1_customer.py) tạo Customer giả qua Container thật, đọc lại giải mã đúng, xác nhận `id_number_enc` là nhị phân không đọc được — chạy thật trên PostgreSQL. Đã có bản build `.exe` trial đầu tiên ([`backend/build.spec`](backend/build.spec)) — khởi động và trả request thật; chưa đóng gói model OCR thật (chưa có adapter).
 

@@ -240,6 +240,7 @@ class ProcessOcrSessionUseCase:
                 sorted({flag for f in result.fields.values() for flag in f.flags})
             ),
             fields=tuple(self._field_snapshot(key, result.fields[key]) for key in FieldKey),
+            created_at=self._clock.now(),
         )
 
     def _field_snapshot(self, key: FieldKey, extracted: ExtractedField) -> OcrFieldSnapshot:

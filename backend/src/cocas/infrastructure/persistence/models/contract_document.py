@@ -22,7 +22,7 @@ from sqlalchemy.dialects.postgresql import UUID as PG_UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
 from cocas.domain.enums.doc_type import DocType
-from cocas.infrastructure.persistence.models.base import Base, CreatedAtMixin, UuidPkMixin
+from cocas.infrastructure.persistence.models.base import Base, CreatedAtMixin, UuidPkMixin, sql_in
 
 _DOC_TYPE_VALUES = tuple(t.value for t in DocType)
 
@@ -31,7 +31,7 @@ class ContractDocumentModel(UuidPkMixin, CreatedAtMixin, Base):
     __tablename__ = "contract_document"
     __table_args__ = (
         UniqueConstraint("contract_id", "doc_type", name="uq_contract_document__type"),
-        CheckConstraint(f"doc_type IN {_DOC_TYPE_VALUES}", name="doc_type_valid"),
+        CheckConstraint(sql_in("doc_type", _DOC_TYPE_VALUES), name="doc_type_valid"),
     )
 
     contract_id: Mapped[uuid.UUID] = mapped_column(

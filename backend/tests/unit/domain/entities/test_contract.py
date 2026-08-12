@@ -49,22 +49,39 @@ class TestHappyPathTransitions:
         contract = _make()
         contract.mark_generating(NOW)
         assert contract.status == ContractStatus.GENERATING
-        contract.mark_completed(b"\x00" * 32, NOW)
+        contract.mark_completed(NOW)
         assert contract.status == ContractStatus.COMPLETED
         assert contract.is_completed is True
 
-    def test_completed_records_the_docx_hash(self) -> None:
-        """The only way into COMPLETED carries the snapshot hash with it."""
-        contract = _make()
+    def test_the_snapshot_hash_is_set_at_construction_not_at_completion(self) -> None:
+        """🔴 Inverted 2026-08-12 — see `mark_completed`'s docstring.
+
+        This used to assert that `mark_completed()` recorded the hash, and it
+        passed while the production code was wrong twice over: the value it
+        recorded was the `.docx` digest (already in
+        `contract_document.file_sha256`), and it arrived one transaction after
+        the NOT NULL column had to be filled. The test could not notice either,
+        because it never touched a database and never asked what the hash was
+        *of*.
+        """
+        digest = b"\xab" * 32
+        contract = _make(snapshot_sha256=digest)
         contract.mark_generating(NOW)
-        contract.mark_completed(b"\xab" * 32, NOW)
-        assert contract.snapshot_sha256 == b"\xab" * 32
+        contract.mark_completed(NOW)
+        assert contract.snapshot_sha256 == digest
+
+    def test_completing_does_not_overwrite_the_snapshot_hash(self) -> None:
+        """The render cannot change its own input, so neither can this."""
+        contract = _make(snapshot_sha256=b"\x11" * 32)
+        contract.mark_generating(NOW)
+        contract.mark_completed(NOW)
+        assert contract.snapshot_sha256 == b"\x11" * 32
 
     def test_version_increments_on_each_transition(self) -> None:
         contract = _make()
         contract.mark_generating(NOW)
         assert contract.version == 2
-        contract.mark_completed(b"\x00" * 32, NOW)
+        contract.mark_completed(NOW)
         assert contract.version == 3
 
 
@@ -88,7 +105,7 @@ class TestFailurePaths:
         contract.mark_generating(NOW)
         contract.mark_generation_failed("RENDER_ERROR", "boom", NOW)
         contract.retry_generation(NOW)
-        contract.mark_completed(b"\x00" * 32, NOW)
+        contract.mark_completed(NOW)
         assert contract.error_code is None
         assert contract.error_message is None
 
@@ -97,13 +114,13 @@ class TestInvalidTransitions:
     def test_draft_cannot_jump_to_completed(self) -> None:
         contract = _make()
         with pytest.raises(BusinessRuleViolation) as exc_info:
-            contract.mark_completed(b"\x00" * 32, NOW)
+            contract.mark_completed(NOW)
         assert exc_info.value.code == "INVALID_CONTRACT_TRANSITION"
 
     def test_completed_cannot_transition_further(self) -> None:
         contract = _make()
         contract.mark_generating(NOW)
-        contract.mark_completed(b"\x00" * 32, NOW)
+        contract.mark_completed(NOW)
         with pytest.raises(BusinessRuleViolation):
             contract.mark_generating(NOW)
 
@@ -118,7 +135,7 @@ class TestVoid:
     def test_void_from_completed(self) -> None:
         contract = _make()
         contract.mark_generating(NOW)
-        contract.mark_completed(b"\x00" * 32, NOW)
+        contract.mark_completed(NOW)
         contract.void("Phát hiện sai thông tin khách hàng", "phthang", NOW)
         assert contract.status == ContractStatus.VOIDED
 
@@ -140,7 +157,7 @@ class TestSupersede:
     def test_supersede_completed(self) -> None:
         contract = _make()
         contract.mark_generating(NOW)
-        contract.mark_completed(b"\x00" * 32, NOW)
+        contract.mark_completed(NOW)
         contract.supersede(NOW)
         assert contract.status == ContractStatus.SUPERSEDED
 
@@ -158,7 +175,7 @@ class TestLockedForBusinessEdits:
     def test_completed_is_locked(self) -> None:
         contract = _make()
         contract.mark_generating(NOW)
-        contract.mark_completed(b"\x00" * 32, NOW)
+        contract.mark_completed(NOW)
         assert contract.is_locked_for_business_edits is True
 
     def test_voided_is_locked(self) -> None:

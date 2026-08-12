@@ -1,6 +1,9 @@
 """`SqlAlchemyBankAccountRepository`."""
 from __future__ import annotations
 
+import uuid
+
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from cocas.domain.entities.bank_account import BankAccount
@@ -22,6 +25,26 @@ class SqlAlchemyBankAccountRepository(SqlAlchemyRepository[BankAccount, BankAcco
 
     def _aad(self, entity_id: object, column: str) -> AadContext:
         return AadContext(entity_id=str(entity_id), table_name=_TABLE, column_name=column)
+
+    async def list_for_customer(self, customer_id: uuid.UUID) -> list[BankAccount]:
+        """A customer's live accounts, primary first.
+
+        ⭐ Needed by the duplicate check, not just by the detail screen. §5.4
+        looks a customer up by CCCD *in order to continue with them* — and for
+        the GDN template continuing means naming a `bank_account_id`
+        (`V-CTR-007` / `COCAS-7012`). A response that says "this person exists"
+        without saying what they have leaves the caller unable to act on it.
+        """
+        statement = (
+            select(self.model)
+            .where(
+                self.model.customer_id == customer_id,
+                self.model.deleted_at.is_(None),
+            )
+            .order_by(self.model.is_primary.desc(), self.model.created_at)
+        )
+        rows = (await self._session.execute(statement)).scalars().all()
+        return [self._to_domain(row) for row in rows]
 
     def _to_domain(self, row: BankAccountModel) -> BankAccount:
         account_number_plain = self._crypto.decrypt(

@@ -20,7 +20,7 @@ from sqlalchemy.orm import Mapped, mapped_column
 
 from cocas.domain.enums.field_key import FieldKey
 from cocas.domain.enums.field_source import FieldSource
-from cocas.infrastructure.persistence.models.base import Base, UuidPkMixin
+from cocas.infrastructure.persistence.models.base import Base, UuidPkMixin, sql_in
 
 _FIELD_KEY_VALUES = tuple(k.value for k in FieldKey)
 _SOURCE_VALUES = tuple(s.value for s in FieldSource)
@@ -30,8 +30,8 @@ class OcrFieldModel(UuidPkMixin, Base):
     __tablename__ = "ocr_field"
     __table_args__ = (
         UniqueConstraint("ocr_result_id", "field_key", name="uq_ocr_field__result_key"),
-        CheckConstraint(f"field_key IN {_FIELD_KEY_VALUES}", name="field_key_valid"),
-        CheckConstraint(f"source IN {_SOURCE_VALUES}", name="source_valid"),
+        CheckConstraint(sql_in("field_key", _FIELD_KEY_VALUES), name="field_key_valid"),
+        CheckConstraint(sql_in("source", _SOURCE_VALUES), name="source_valid"),
         CheckConstraint("confidence BETWEEN 0 AND 1", name="confidence_range"),
         # ⭐ 1..5, not 1..4. `IssuePlaceNormalizer` gained a fifth tier on
         # 2026-08-11 (§12.5.1, the opening-letters discriminator) and it is the

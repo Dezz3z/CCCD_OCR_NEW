@@ -25,6 +25,7 @@ from cocas.infrastructure.persistence.models.base import (
     CreatedAtMixin,
     CreatedByMixin,
     UuidPkMixin,
+    sql_in,
 )
 
 _VALIDATION_STATUS_VALUES = tuple(s.value for s in TemplateValidationStatus)
@@ -35,7 +36,7 @@ class TemplateVersionModel(CreatedByMixin, UuidPkMixin, CreatedAtMixin, Base):
     __table_args__ = (
         UniqueConstraint("template_id", "version_no", name="uq_template_version__no"),
         CheckConstraint("file_size_bytes <= 20971520", name="max_size"),
-        CheckConstraint(f"validation_status IN {_VALIDATION_STATUS_VALUES}", name="validation_status_valid"),
+        CheckConstraint(sql_in("validation_status", _VALIDATION_STATUS_VALUES), name="validation_status_valid"),
     )
 
     template_id: Mapped[uuid.UUID] = mapped_column(

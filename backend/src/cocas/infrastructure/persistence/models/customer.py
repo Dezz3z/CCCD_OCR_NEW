@@ -31,6 +31,7 @@ from cocas.infrastructure.persistence.models.base import (
     CreatedAtMixin,
     CreatedByMixin,
     UuidPkMixin,
+    sql_in,
 )
 
 _DATA_QUALITY_VALUES = tuple(q.value for q in DataQuality)
@@ -48,7 +49,7 @@ class CustomerModel(CreatedByMixin, UuidPkMixin, CreatedAtMixin, Base):
             name="expiry_logic",
         ),
         CheckConstraint("expiry_date IS NULL OR issue_date <= expiry_date", name="date_order"),
-        CheckConstraint(f"data_quality IN {_DATA_QUALITY_VALUES}", name="data_quality_valid"),
+        CheckConstraint(sql_in("data_quality", _DATA_QUALITY_VALUES), name="data_quality_valid"),
         Index(
             "uq_customer__id_number", "id_number_bidx", unique=True, postgresql_where="deleted_at IS NULL"
         ),

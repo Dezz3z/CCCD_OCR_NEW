@@ -26,6 +26,7 @@ from cocas.infrastructure.persistence.models.base import (
     CreatedAtMixin,
     CreatedByMixin,
     UuidPkMixin,
+    sql_in,
 )
 
 _STATUS_VALUES = tuple(s.value for s in ContractStatus)
@@ -40,7 +41,7 @@ class ContractModel(CreatedByMixin, UuidPkMixin, CreatedAtMixin, Base):
             name="void_has_reason",
         ),
         CheckConstraint("supersedes_id IS NULL OR supersedes_id <> id", name="no_self_supersede"),
-        CheckConstraint(f"status IN {_STATUS_VALUES}", name="status_valid"),
+        CheckConstraint(sql_in("status", _STATUS_VALUES), name="status_valid"),
         Index("ix_contract__customer", "primary_customer_id", "created_at"),
         Index("ix_contract__status_created", "status", "created_at"),
         Index("ix_contract__export_name", "export_name"),
