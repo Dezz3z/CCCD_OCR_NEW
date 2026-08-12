@@ -6,10 +6,30 @@ from pydantic import Field
 from pydantic_settings import BaseSettings
 
 
+def _data_dir() -> Path:
+    """`%LOCALAPPDATA%\\COCAS\\data` — the read-write half of §11's layout."""
+    return Path(os.environ.get("LOCALAPPDATA", ".")) / "COCAS" / "data"
+
+
 def _default_dpapi_key_path() -> str:
     """`%LOCALAPPDATA%\\COCAS\\data\\keys\\master.key.dpapi` (§10.3.1, §4.8.1)."""
-    base = os.environ.get("LOCALAPPDATA", ".")
-    return str(Path(base) / "COCAS" / "data" / "keys" / "master.key.dpapi")
+    return str(_data_dir() / "keys" / "master.key.dpapi")
+
+
+def _default_vault_dir() -> str:
+    """`…\\data\\vault` — every encrypted file the system stores (§12.13)."""
+    return str(_data_dir() / "vault")
+
+
+def _default_templates_dir() -> str:
+    """`…\\data\\templates` — the Template Store.
+
+    ⚠️ A **sibling** of the Vault, not inside it (§11). `template_version.
+    file_path` is relative to this directory, and the files here are stored
+    in the clear: `DocxRenderer` opens them by path, and they contain no
+    customer data — only `{{placeholders}}`.
+    """
+    return str(_data_dir() / "templates")
 
 
 class Settings(BaseSettings):
@@ -30,6 +50,10 @@ class Settings(BaseSettings):
 
     # OCR
     ocr_models_dir: str = "./resources/ocr-models"
+
+    # Storage (§11 app-data layout, §12.13)
+    vault_dir: str = Field(default_factory=_default_vault_dir)
+    templates_dir: str = Field(default_factory=_default_templates_dir)
 
     # Security
     local_token_secret: str = "dev-secret-change-in-production"

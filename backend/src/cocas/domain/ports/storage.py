@@ -32,7 +32,10 @@ class VaultRef:
 class IFileStorage(Protocol):
     """⭐ Port 11 — encrypted file storage.
 
-    Implementations: `EncryptedFileVault` (production) · `PlainFileVault` (dev).
+    Implementations: `EncryptedFileVault` (production) · `InMemoryFileStorage`
+    (tests). ⭐ There is deliberately **no** `PlainFileVault`: the Container
+    has no dev mode (§12.13.3), the same decision already taken in P1 for
+    `NullCryptoService`.
 
     Invariants every implementation must uphold:
       - writes follow write-temp → verify → rename, so a partially written

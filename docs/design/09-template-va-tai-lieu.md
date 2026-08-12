@@ -337,12 +337,12 @@ graph TB
     D --> F["INSERT contract (GENERATING)<br/>+ contract_party<br/>+ render_snapshot_enc"]
 
     F --> G1["DocxContextAdapter<br/>StyledValue → RichText"]
-    G1 --> G["DocxRenderer · docxtpl<br/>SandboxedEnvironment"]
+    G1 --> G["DocxRenderer.render_to_bytes<br/>SandboxedEnvironment"]
     G -->|Lỗi| E2["❌ GENERATION_FAILED · COCAS-7003"]
-    G --> H["Ghi file .tmp vào Vault (mã hoá)"]
-    H --> I["Đọc lại · tính SHA-256 · so khớp"]
+    G --> H["EncryptedFileVault.save<br/>AES-256-GCM · VAULT_KEY"]
+    H --> I["Ghi .tmp · đọc lại · so hash<br/>· giải mã thử"]
     I -->|Lệch| E3["❌ COCAS-7009"]
-    I --> J["os.replace .tmp → .docx<br/>INSERT contract_document"]
+    I --> J["os.replace .tmp → {uuid}.enc<br/>INSERT contract_document"]
     J --> P["status=COMPLETED<br/>✅ TRẢ VỀ 201 NGAY (~500ms)"]
     P --> Q["Job RETENTION_PURGE<br/>xoá ảnh CCCD gốc"]
 
@@ -350,6 +350,30 @@ graph TB
 ```
 
 > ⭐ **Quyết định then chốt (D2.1):** toàn bộ việc sinh tài liệu là **một giao dịch đồng bộ** kết thúc bằng `201` sau ~500 ms. Không còn khâu bất đồng bộ nào sau khi ghi `.docx`, nên `contract` đi thẳng `GENERATING → COMPLETED`; không còn trạng thái trung gian `DOCX_READY`, không còn `PDF_CONVERTING`/`PDF_FAILED`.
+
+> ⭐ **"Đồng bộ" không có nghĩa là "một transaction".** Ô `INSERT contract (GENERATING)` nằm **trước** khâu render và được **commit** ở đó: §9.16 quy định một lần render hỏng phải để lại hợp đồng ở `GENERATION_FAILED`, mà rollback thì xoá luôn dòng vừa tạo. Chi tiết ba giai đoạn và hai cái giá phải trả: **§12.14.2**.
+
+> ⭐ **Không có bản `.docx` rõ nào chạm đĩa.** `render_to_bytes()` (§12.11.2) trả byte thẳng cho Vault. Đường đi cũ — render ra file tạm rồi đọc lại để mã hoá — đặt một hợp đồng không mã hoá lên NTFS, nơi file đã xoá vẫn khôi phục được.
+
+### ⭐ 9.11.1. Đo toàn chuỗi trên 2 mẫu thật (2026-08-11)
+
+`backend/scripts/verify_contract_generation.py` chạy trọn `GenerateContractUseCase` — validation, cấp số, dựng ngữ cảnh, render, ghi Vault mã hoá, 2 transaction — với `EncryptedFileVault` **thật** trên thư mục tạm. Chỉ CSDL là giả (cụm 55432 không chạy).
+
+| | `01A_HD_GDN` | `01A_HD_GDKQ` |
+|---|---|---|
+| Nguội (gồm `prepare` mẫu) | 3.1 s | 4.7–5.8 s |
+| ⭐ **Ấm — p50** | **179 / 189 ms** | **221 / 239 ms** |
+| ⭐ **Ấm — p95** | **201 / 279 ms** | **267 / 320 ms** |
+| Kích thước `.docx` | 893 KB | 591 KB |
+| Ngân sách §9.11 ("201 sau ~500 ms") | ✅ | ✅ |
+
+*(hai con số = hai lần chạy độc lập)*
+
+⭐ **Ghi Vault mã hoá gần như miễn phí.** Đo lại riêng bộ render **trong cùng phiên máy**: p50 **256 / 172 ms**, p95 **371 / 217 ms** — trùng dải với toàn chuỗi ở trên. AES-256-GCM trên 0.6–0.9 MB cộng một lượt đọc lại để xác thực không dời được kim.
+
+> ⚠️ **Đừng so con số này với 291/324 ms của §9.12.1 rồi kết luận "đã nhanh hơn".** Đó là cùng một đoạn mã, không sửa dòng nào; bộ render đo lại hôm nay ra 172–256 ms. Chênh lệch là **phương sai của máy 4 nhân / 4 GB**, thứ đã đo được tới 3 lần ở §9.12.1. Khi một con số hiệu năng tự nhiên tốt lên, hãy kiểm xem có thay đổi gì trên đường đi của nó không **trước khi** ghi công.
+
+⚠️ **Cả hai mẫu thật đều KHÔNG dùng `{{contract_no}}`.** Phép kiểm đầu tiên của script tìm số hợp đồng trong văn bản và báo đỏ trên hai tài liệu hoàn toàn đúng. Điều này khớp §9.14.1 — số hợp đồng là định danh **nội bộ** (nhật ký, tra cứu, mã truy vết), không phải thứ in ra trang. Phép kiểm đã đổi thành: **mọi biến mà chính mẫu khai báo** (12 và 9 biến, lấy từ Port 20) đều có giá trị xuất hiện trong văn bản.
 
 ---
 
@@ -509,9 +533,12 @@ Bản D2.0 ghi "timeout 10 s + giới hạn 1000 vòng lặp, chỉ để bắt 
 
 ## 9.15. Bảo đảm toàn vẹn tài liệu
 
+> ⭐ **`contract_document.file_sha256` là hash của bản `.docx` RÕ, không phải của ciphertext trong Vault.** Hai lý do, cả hai đều chặn: (1) mã hoá lại cùng một tài liệu sinh nonce mới ⇒ ciphertext khác ⇒ một hợp đồng **không đổi** sẽ có hash mới, biến cột này thành vô nghĩa; (2) thứ người dùng tải về là bản rõ, nên đó là thứ duy nhất đáng được xác thực. Tính toàn vẹn của lớp vỏ đã do thẻ xác thực GCM lo, và nó **mạnh hơn** SHA-256 vì có khoá.
+
 | Thời điểm | Kiểm tra |
 |---|---|
 | Sau khi render DOCX | Đọc lại file, tính SHA-256, so với giá trị lúc ghi |
+| ⭐ Sau khi ghi vào Vault | Đọc lại ciphertext, so hash — **và giải mã thử một lần** (§12.13.1: đó là thứ duy nhất chứng minh AAD lúc `save()` khớp AAD lúc `load()`; sai thì file hỏng **im lặng** và chỉ lộ ra nhiều năm sau) |
 | Trước khi ghi bản ghi | Tính SHA-256 của `.docx` cuối cùng, lưu vào `contract_document.file_sha256` |
 | ⭐ **Mỗi lần tải xuống** | Đọc file, tính lại SHA-256, so với CSDL. Lệch → `COCAS-7009`, **từ chối trả file**, ghi nhật ký `DOCUMENT_INTEGRITY_FAILED` |
 | Job kiểm tra định kỳ | Hàng tuần đối chiếu toàn bộ `contract_document` với file thật; báo cáo ở màn hình Chẩn đoán |

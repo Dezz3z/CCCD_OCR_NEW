@@ -13,12 +13,17 @@ from sqlalchemy.ext.asyncio import AsyncEngine, async_sessionmaker, create_async
 
 from cocas.application.pipelines.extraction_pipeline import ExtractionPipeline
 from cocas.application.render_context_builder import RenderContextBuilder
+from cocas.application.use_cases.contract.generate_contract import GenerateContractUseCase
 from cocas.application.use_cases.ocr.process_ocr_session import ProcessOcrSessionUseCase
 from cocas.config.settings import Settings
 from cocas.domain.ports.crypto import ICryptoService
+from cocas.domain.ports.storage import IFileStorage
 from cocas.domain.ports.system import IClock, IIdGenerator
+from cocas.domain.services.contract_number_generator import ContractNumberGenerator
+from cocas.domain.services.export_name_generator import ExportNameGenerator
 from cocas.domain.services.field_normalizer import FieldNormalizer
 from cocas.domain.services.issue_place_normalizer import IssuePlaceNormalizer
+from cocas.domain.validation.engine import ValidationEngine
 from cocas.infrastructure.documents.docx_context_adapter import DocxContextAdapter
 from cocas.infrastructure.documents.docx_renderer import DocxRenderer
 from cocas.infrastructure.documents.template_inspector import DocxTemplateInspector
@@ -41,6 +46,7 @@ from cocas.infrastructure.persistence.repositories.document_type_repository impo
 from cocas.infrastructure.persistence.unit_of_work import SqlAlchemyUnitOfWork
 from cocas.infrastructure.security.crypto import DpapiCryptoService
 from cocas.infrastructure.security.dpapi import DpapiKeyManager
+from cocas.infrastructure.storage.encrypted_file_vault import EncryptedFileVault
 from cocas.infrastructure.system.clock import SystemClock
 from cocas.infrastructure.system.id_generator import Uuid7Generator
 
@@ -58,10 +64,23 @@ class Container:
         configure_logging(log_dir=settings.log_dir, log_level=settings.log_level)
 
         kek = DpapiKeyManager(Path(settings.dpapi_key_path)).load_or_create_kek()
-        self.crypto: ICryptoService = DpapiCryptoService(kek)
+        crypto = DpapiCryptoService(kek)
+        self.crypto: ICryptoService = crypto
 
         self.clock: IClock = SystemClock()
         self.id_generator: IIdGenerator = Uuid7Generator()
+
+        # ⭐ Port 11. Takes the **derived** VAULT_KEY, not the crypto service:
+        # §4.8.1's key tree gives Vault files their own branch, and handing
+        # the service over would encrypt every image and contract under the
+        # same key as the PII columns (§12.13.1). `crypto` is the concrete
+        # type here for exactly this one property.
+        self.file_storage: IFileStorage = EncryptedFileVault(
+            root=Path(settings.vault_dir),
+            vault_key=crypto.vault_key,
+            clock=self.clock,
+            id_generator=self.id_generator,
+        )
 
         self.engine: AsyncEngine = create_async_engine(
             settings.database_url, echo=settings.database_echo
@@ -122,6 +141,13 @@ class Container:
         # `IssuePlaceNormalizer` is (§12.5).
         self.render_context_builder = RenderContextBuilder()
         self.docx_context_adapter = DocxContextAdapter()
+        self.contract_number_generator = ContractNumberGenerator()
+        self.export_name_generator = ExportNameGenerator()
+
+        # ⭐ Holds the 4 rule sets of §12.7 — `CONTRACT_GENERATION` gained its
+        # 10 `V-CTR-*` members in P3 module 6; the other two P3 sets are still
+        # registered **empty**, which is a valid report, not a missing key.
+        self.validation_engine = ValidationEngine()
 
     def unit_of_work(self) -> SqlAlchemyUnitOfWork:
         """A fresh `IUnitOfWork` per call — one transaction, one `async with` block (§12.14)."""
@@ -140,6 +166,27 @@ class Container:
             uow_factory=self.unit_of_work,
             id_generator=self.id_generator,
             clock=self.clock,
+        )
+
+    def generate_contract_use_case(self) -> GenerateContractUseCase:
+        """⭐ The whole of §9.11 as one callable — OCR's counterpart for documents.
+
+        Built per call for the same reason `process_ocr_session_use_case()` is:
+        it is stateless, and making it an attribute invites someone to cache a
+        `IUnitOfWork` inside it.
+        """
+        return GenerateContractUseCase(
+            uow_factory=self.unit_of_work,
+            context_builder=self.render_context_builder,
+            context_adapter=self.docx_context_adapter,
+            renderer=self.document_renderer,
+            file_storage=self.file_storage,
+            validator=self.validation_engine,
+            contract_numbers=self.contract_number_generator,
+            export_names=self.export_name_generator,
+            templates_dir=Path(self.settings.templates_dir),
+            clock=self.clock,
+            id_generator=self.id_generator,
         )
 
     async def close(self) -> None:

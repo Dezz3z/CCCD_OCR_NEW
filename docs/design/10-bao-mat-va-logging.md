@@ -178,10 +178,13 @@ Chi tiết đầy đủ: xem [04-co-so-du-lieu.md §4.8](04-co-so-du-lieu.md#48-
 |---|---|
 | 1 | Client chỉ gửi **UUID** — không endpoint nào nhận tham số kiểu `path`/`filename` |
 | 2 | Server tra `file_path` **tương đối** từ CSDL |
+| ⭐ 2b | **Kiểm hình dạng TRƯỚC KHI ghép**: khớp đúng `{category}/{yyyy}/{mm}/{dd}/{uuid}.enc` bằng biểu thức chính quy. Không khớp ⇒ từ chối ngay |
 | 3 | Ghép với gốc Vault rồi **chuẩn hoá** (`Path.resolve()`) — giải quyết `..`, symlink, junction |
 | 4 | ⭐ Kiểm tra kết quả **thực sự nằm trong** thư mục Vault bằng `Path.is_relative_to()`, **không so sánh chuỗi** |
 | 5 | Từ chối nếu là symlink trỏ ra ngoài |
 | 6 | Tên file trong Vault luôn `{uuid}.enc` |
+
+> ⚠️ **Vì sao thêm bước 2b:** trên Windows, phép ghép `gốc / tương_đối` của `pathlib` **không bảo vệ gì cả** — vế phải tuyệt đối sẽ **thay thế** vế trái. `PureWindowsPath("C:/vault") / "C:/Windows/x"` cho ra `C:/Windows/x`, và `… / "/Windows/x"` cũng vậy. Bước 3+4 vẫn bắt được, nhưng chỉ nhờ **một** phép kiểm; đọc bước 3 rồi tưởng "đã ghép vào gốc nên chắc chắn nằm trong gốc" là hiểu sai và là kiểu hiểu sai dễ lan sang chỗ khác. Bước 2b khiến chuỗi không do hệ thống sinh ra **không bao giờ trở thành một `Path`**. Hiện thực: `infrastructure/storage/path_guard.py` (§12.13.2).
 | 7 | Ngoại lệ duy nhất: thư mục backup — người dùng chọn qua **hộp thoại native của Tauri**, không gõ đường dẫn; kiểm tra là thư mục tồn tại, ghi được, không nằm trong `app/` |
 
 ### 10.4.3. Chống SQL Injection

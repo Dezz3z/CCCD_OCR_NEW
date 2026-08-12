@@ -171,6 +171,14 @@ Mọi dòng code phải tuân thủ. Vi phạm = phải sửa, không phải tra
 | 2026-08-11 | ⭐ `RenderContextBuilder.build()` nhận `Template` (không phải `TemplateVersion`) — `suppressed_variables` và `contract_fields` là cột của `contract_template` ([§12.9.1](12-dac-ta-module.md)) |
 | 2026-08-11 | ⭐ §9.12 **bỏ timeout 10 s và giới hạn 1000 vòng lặp** — chúng canh một đường mà Port 20 đã đóng lúc đăng ký, và timeout in-process không hiện thực đúng được ([§9.12.2](09-template-va-tai-lieu.md)) |
 | 2026-08-11 | ⭐ §9.18 "12/10 biến" → **12/9** — `01A_HD_GDKQ` khai 9 biến |
+| 2026-08-11 | 🔴🔴 **Port 11 và Port 12 không ghép được với nhau.** `render()` ghi ra đường dẫn, `save()` nhận byte — nối theo đặc tả sẽ đặt một hợp đồng **không mã hoá** lên đĩa. Port 12 thêm `render_to_bytes()` ([§12.11.2](12-dac-ta-module.md)) |
+| 2026-08-11 | ⭐ **`EncryptedFileVault` dùng VAULT_KEY, KHÔNG dùng `ICryptoService`** — nhánh thứ ba của cây khoá §4.8.1 dùng thẳng KEK; gọi nó từ Vault xoá bỏ đúng sự tách biệt cây khoá tồn tại để tạo ra ([§12.13.1](12-dac-ta-module.md)) |
+| 2026-08-11 | ⚠️ §10.4.2 thêm bước **2b — kiểm hình dạng trước khi ghép**: trên Windows `gốc / "C:/…"` cho ra `C:/…`, phép ghép **không** bảo vệ gì ([§12.13.2](12-dac-ta-module.md)) |
+| 2026-08-11 | ⭐⭐ **`GenerateContractUseCase` dùng 2 transaction vì bản ghi LỖI phải sống sót** — §9.16 đòi `GENERATION_FAILED` bền vững, mà rollback thì xoá luôn dòng. Ngoại lệ §12.14 thứ hai, lý do khác §12.14.1 ([§12.14.2](12-dac-ta-module.md)) |
+| 2026-08-11 | ⭐ `contract_document.file_sha256` = hash bản **rõ**, không phải ciphertext — nonce mới mỗi lần mã hoá sẽ khiến hợp đồng không đổi có hash mới ([§9.15](09-template-va-tai-lieu.md)) |
+| 2026-08-11 | ⭐ **Không xây `PlainFileVault`** — Container không có chế độ dev (P-11), y như quyết định đã chốt cho `NullCryptoService` ở P1 ([§12.13.3](12-dac-ta-module.md)) |
+| 2026-08-11 | ⭐ Đo toàn chuỗi sinh hợp đồng trên 2 mẫu thật: **p50 179–239 ms · p95 201–320 ms**, ngân sách §9.11 là ~500 ms. Ghi Vault mã hoá **không dời được kim** so với render đơn thuần ([§9.11.1](09-template-va-tai-lieu.md)) |
+| 2026-08-11 | ⚠️ **Cả 2 mẫu thật không dùng `{{contract_no}}`** — số hợp đồng là định danh nội bộ (§9.14.1), không in ra trang. Phép kiểm cũ báo đỏ trên tài liệu đúng ([§9.11.1](09-template-va-tai-lieu.md)) |
 
 ### Tóm tắt kết quả D2.0
 

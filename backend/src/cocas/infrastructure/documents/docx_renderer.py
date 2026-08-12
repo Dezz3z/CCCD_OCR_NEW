@@ -49,7 +49,7 @@ from cocas.domain.exceptions import (
     TemplateChecksumMismatchError,
     TemplateNotFoundError,
 )
-from cocas.domain.ports.documents import RenderResult
+from cocas.domain.ports.documents import RenderedDocument, RenderResult
 from cocas.infrastructure.documents.template_inspector import ALLOWED_FILTERS
 
 #: Parts that may contain Jinja2. Everything else in the zip is copied byte
@@ -133,6 +133,35 @@ class DocxRenderer:
         """
         self._load(template_path, expected_sha256)
 
+    def render_to_bytes(
+        self,
+        template_path: str,
+        context: dict[str, object],
+        expected_sha256: bytes | None = None,
+    ) -> RenderedDocument:
+        """⭐ Render to memory — the path contract generation takes (§12.11.2).
+
+        Nothing is written anywhere, so `InsufficientStorageError` and
+        `DocumentIntegrityError` cannot arise here; they belong to `render()`.
+
+        Raises:
+            TemplateNotFoundError: the template file is missing.
+            TemplateChecksumMismatchError: on-disk SHA-256 ≠ `expected_sha256`.
+            RenderError: Jinja2 failed, or the produced zip is not a `.docx`.
+        """
+        started = time.perf_counter()
+        prepared = self._load(template_path, expected_sha256)
+        payload = self._build_docx(prepared, context)
+
+        duration_ms = int((time.perf_counter() - started) * 1000)
+        logger.info("Rendered document: {} bytes in {} ms", len(payload), duration_ms)
+        return RenderedDocument(
+            content=payload,
+            sha256=hashlib.sha256(payload).digest(),
+            size_bytes=len(payload),
+            duration_ms=duration_ms,
+        )
+
     def render(
         self,
         template_path: str,
@@ -142,6 +171,9 @@ class DocxRenderer:
     ) -> RenderResult:
         """Render `context` into `output_path` and return the result.
 
+        ⚠️ Writes a **plaintext** `.docx`. That is right for the template
+        preview (§9.10) and wrong for a contract — see `render_to_bytes`.
+
         Raises:
             TemplateNotFoundError: the template file is missing.
             TemplateChecksumMismatchError: on-disk SHA-256 ≠ `expected_sha256`.
@@ -150,24 +182,17 @@ class DocxRenderer:
             DocumentIntegrityError: the file read back does not hash to what
                 was written (`COCAS-7009`).
         """
-        started = time.perf_counter()
-        prepared = self._load(template_path, expected_sha256)
         destination = Path(output_path)
         self._check_free_space(destination)
 
-        payload = self._build_docx(prepared, context)
-        digest = hashlib.sha256(payload).digest()
-        self._write_verify_rename(destination, payload, digest)
+        document = self.render_to_bytes(template_path, context, expected_sha256)
+        self._write_verify_rename(destination, document.content, document.sha256)
 
-        duration_ms = int((time.perf_counter() - started) * 1000)
-        logger.info(
-            "Rendered document: {} bytes in {} ms", len(payload), duration_ms
-        )
         return RenderResult(
             output_path=str(destination),
-            sha256=digest,
-            size_bytes=len(payload),
-            duration_ms=duration_ms,
+            sha256=document.sha256,
+            size_bytes=document.size_bytes,
+            duration_ms=document.duration_ms,
         )
 
     # -------------------------------------------------------------- preparing

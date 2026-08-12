@@ -11,8 +11,24 @@ from typing import Protocol, runtime_checkable
 
 
 @dataclass(frozen=True, slots=True)
+class RenderedDocument:
+    """A rendered `.docx` still in memory (§12.11.2).
+
+    ⭐ `sha256` is the hash of `content` — the **plaintext** document. That is
+    what `contract_document.file_sha256` stores and what §9.15 re-checks on
+    every download; hashing the Vault's ciphertext instead would give an
+    unchanged contract a new hash on every re-encryption (fresh nonce).
+    """
+
+    content: bytes
+    sha256: bytes
+    size_bytes: int
+    duration_ms: int
+
+
+@dataclass(frozen=True, slots=True)
 class RenderResult:
-    """Outcome of rendering a `.docx` from a template."""
+    """Outcome of rendering a `.docx` from a template to a file."""
 
     output_path: str
     sha256: bytes
@@ -32,6 +48,27 @@ class IDocumentRenderer(Protocol):
     Invariant: write-temp → verify → rename, so a half-written `.docx`
     never exists at `output_path`.
     """
+
+    def render_to_bytes(
+        self,
+        template_path: str,
+        context: dict[str, object],
+        expected_sha256: bytes | None = None,
+    ) -> RenderedDocument:
+        """⭐ Render and return the document without touching the filesystem.
+
+        This exists because Port 11 and Port 12 do not compose (§12.11.2):
+        `IFileStorage.save()` takes `bytes`, this port writes to a path, and
+        the only bridge between them is a temporary file — which would put an
+        **unencrypted** contract on disk, contradicting §4.8.3 ("toàn bộ file
+        trong Vault" is encrypted) and §10's T9. Contract generation uses
+        this; the template preview (§9.10), whose whole point is a plain file
+        outside the Vault, uses `render()`.
+
+        Raises the same set as `render()` minus `DocumentIntegrityError`,
+        which is about a file that was written and read back.
+        """
+        ...
 
     def render(
         self,

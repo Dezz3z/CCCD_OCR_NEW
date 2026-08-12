@@ -17,8 +17,14 @@ from cocas.infrastructure.persistence.repositories.bank_account_repository impor
 from cocas.infrastructure.persistence.repositories.card_image_repository import (
     SqlAlchemyCardImageRepository,
 )
+from cocas.infrastructure.persistence.repositories.contract_document_repository import (
+    SqlAlchemyContractDocumentRepository,
+)
 from cocas.infrastructure.persistence.repositories.contract_party_repository import (
     SqlAlchemyContractPartyRepository,
+)
+from cocas.infrastructure.persistence.repositories.contract_repository import (
+    SqlAlchemyContractRepository,
 )
 from cocas.infrastructure.persistence.repositories.customer_repository import (
     SqlAlchemyCustomerRepository,
@@ -59,7 +65,9 @@ class SqlAlchemyUnitOfWork:
         self.ocr_results = SqlAlchemyOcrResultRepository(self._session, self._crypto)
         self.templates = SqlAlchemyTemplateRepository(self._session)
         self.template_versions = SqlAlchemyTemplateVersionRepository(self._session)
+        self.contracts = SqlAlchemyContractRepository(self._session, self._crypto)
         self.contract_parties = SqlAlchemyContractPartyRepository(self._session)
+        self.contract_documents = SqlAlchemyContractDocumentRepository(self._session)
         self.customers = SqlAlchemyCustomerRepository(self._session, self._crypto)
         self.bank_accounts = SqlAlchemyBankAccountRepository(self._session, self._crypto)
         return self

@@ -1,6 +1,10 @@
 """`SqlAlchemyTemplateRepository`."""
 from __future__ import annotations
 
+import uuid
+
+from sqlalchemy import select
+
 from cocas.domain.entities.template import Template
 from cocas.infrastructure.persistence.models.contract_template import ContractTemplateModel
 from cocas.infrastructure.persistence.repositories._base import SqlAlchemyRepository
@@ -8,6 +12,24 @@ from cocas.infrastructure.persistence.repositories._base import SqlAlchemyReposi
 
 class SqlAlchemyTemplateRepository(SqlAlchemyRepository[Template, ContractTemplateModel]):
     model = ContractTemplateModel
+
+    async def get_for_update(self, template_id: uuid.UUID) -> Template | None:
+        """⭐ `SELECT … FOR UPDATE` — the row lock `contract_no_seq` needs (DB-09).
+
+        `Template.next_contract_sequence()` documents this as its
+        precondition, and it is not decoration: `contract_no` is UNIQUE, so
+        two concurrent generations reading the same counter produce one
+        contract and one `DuplicateEntityError` **after** both have paid for
+        a render. One Uvicorn worker makes that unlikely, not impossible —
+        the `JobRunner` polls the same database from the same process.
+        """
+        statement = (
+            select(self.model)
+            .where(self.model.id == template_id)
+            .with_for_update()
+        )
+        row = (await self._session.execute(statement)).scalar_one_or_none()
+        return self._to_domain(row) if row is not None else None
 
     def _to_domain(self, row: ContractTemplateModel) -> Template:
         return Template(

@@ -14,18 +14,19 @@ from collections.abc import Mapping, Sequence
 from typing import Any
 
 from cocas.domain.exceptions import ValidationError
+from cocas.domain.validation.contract_rules import CONTRACT_GENERATION_RULES
 from cocas.domain.validation.ocr_rules import OCR_RESULT_RULES
 from cocas.domain.validation.report import ValidationIssue, ValidationReport
 from cocas.domain.validation.rule import Rule, RuleContext, RuleSetKey
 
-# ⚠️ The three P3 sets are registered empty rather than omitted. An empty set
-# returns a valid report; a missing key raises. Those are different answers to
-# "is this contract ready to generate?", and the wrong one would let P3 ship a
-# use case that silently validates nothing.
+# ⚠️ The remaining P3 sets are registered empty rather than omitted. An empty
+# set returns a valid report; a missing key raises. Those are different answers
+# to "is this ready?", and the wrong one would let P3 ship a use case that
+# silently validates nothing.
 DEFAULT_REGISTRY: Mapping[RuleSetKey, tuple[Rule[Any], ...]] = {
     RuleSetKey.OCR_RESULT: OCR_RESULT_RULES,
     RuleSetKey.CUSTOMER_FORM: (),
-    RuleSetKey.CONTRACT_GENERATION: (),
+    RuleSetKey.CONTRACT_GENERATION: CONTRACT_GENERATION_RULES,
     RuleSetKey.TEMPLATE_REGISTRATION: (),
 }
 

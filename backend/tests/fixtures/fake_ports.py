@@ -24,7 +24,7 @@ from cocas.domain.enums.job_status import JobStatus
 from cocas.domain.enums.job_type import JobType
 from cocas.domain.enums.template_validation_status import TemplateValidationStatus
 from cocas.domain.ports.crypto import AadContext, BidxField
-from cocas.domain.ports.documents import RenderResult
+from cocas.domain.ports.documents import RenderedDocument, RenderResult
 from cocas.domain.ports.ocr import (
     DocumentTypeSpec,
     EngineInfo,
@@ -419,9 +419,30 @@ class InMemoryFileStorage:
 class FakeDocumentRenderer:
     """Port 12."""
 
-    def __init__(self) -> None:
+    def __init__(self, error: Exception | None = None) -> None:
         self.calls: list[tuple[str, dict[str, object], str]] = []
         self.expected_hashes: list[bytes | None] = []
+        self.error = error
+        """Set to make the next render raise — how a test reaches §9.16's
+        `GENERATION_FAILED` path without corrupting a real template."""
+
+    def render_to_bytes(
+        self,
+        template_path: str,
+        context: dict[str, object],
+        expected_sha256: bytes | None = None,
+    ) -> RenderedDocument:
+        if self.error is not None:
+            raise self.error
+        self.calls.append((template_path, context, ""))
+        self.expected_hashes.append(expected_sha256)
+        payload = repr(sorted(context.items())).encode()
+        return RenderedDocument(
+            content=payload,
+            sha256=hashlib.sha256(payload).digest(),
+            size_bytes=len(payload),
+            duration_ms=1,
+        )
 
     def render(
         self,
@@ -430,14 +451,13 @@ class FakeDocumentRenderer:
         output_path: str,
         expected_sha256: bytes | None = None,
     ) -> RenderResult:
-        self.calls.append((template_path, context, output_path))
-        self.expected_hashes.append(expected_sha256)
-        payload = repr(sorted(context.items())).encode()
+        document = self.render_to_bytes(template_path, context, expected_sha256)
+        self.calls[-1] = (template_path, context, output_path)
         return RenderResult(
             output_path=output_path,
-            sha256=hashlib.sha256(payload).digest(),
-            size_bytes=len(payload),
-            duration_ms=1,
+            sha256=document.sha256,
+            size_bytes=document.size_bytes,
+            duration_ms=document.duration_ms,
         )
 
 

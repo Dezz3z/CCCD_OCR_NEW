@@ -30,13 +30,14 @@ class TestRegistry:
         registered = ValidationEngine().rules_in(RuleSetKey.OCR_RESULT)
         assert registered == tuple(f"V-OCR-{n:03d}" for n in range(1, 24))
 
-    def test_the_p3_sets_are_registered_but_empty(self) -> None:
+    def test_the_contract_set_holds_exactly_the_10_documented_rules(self) -> None:
+        """§8.6 — filled in by P3 module 6; same guard as the OCR set above."""
+        registered = ValidationEngine().rules_in(RuleSetKey.CONTRACT_GENERATION)
+        assert registered == tuple(f"V-CTR-{n:03d}" for n in range(1, 11))
+
+    def test_the_remaining_p3_sets_are_registered_but_empty(self) -> None:
         engine = ValidationEngine()
-        for key in (
-            RuleSetKey.CUSTOMER_FORM,
-            RuleSetKey.CONTRACT_GENERATION,
-            RuleSetKey.TEMPLATE_REGISTRATION,
-        ):
+        for key in (RuleSetKey.CUSTOMER_FORM, RuleSetKey.TEMPLATE_REGISTRATION):
             assert engine.rules_in(key) == ()
 
     def test_an_empty_set_returns_a_valid_report_rather_than_raising(self) -> None:

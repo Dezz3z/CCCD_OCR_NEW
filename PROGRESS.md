@@ -12,7 +12,7 @@
 P0: Chuẩn bị        [====] ✅ DONE (2026-08-11)
 P1: Nền tảng        [====] ✅ DONE (2026-08-09)
 P2: OCR Module      [====] 🔄 MÃ NGUỒN XONG (4/4 tuần) — chờ Golden Set ⭐ Critical path
-P3: Nghiệp vụ       [=== ] 🔄 ĐANG LÀM — module 4/6 (sinh DOCX) xong 2026-08-11
+P3: Nghiệp vụ       [====] 🔄 ĐANG LÀM — module 5/6 xong; còn module 7 (62 endpoint)
 P4: Giao diện       [    ] ⏳ TODO (3 tuần)
 P5: Desktop         [    ] ⏳ TODO (2 tuần)
 P6: Hoàn thiện      [    ] ⏳ TODO (2 tuần)
@@ -363,8 +363,9 @@ Thẻ được **ghép từ chính dữ liệu, không từ tên file**: mọi �
 - [x] ⭐ **Bảng định dạng §9.7 đầy đủ 11 kiểu** (`value_formatter.py`, gồm đọc số tiền thành chữ tiếng Việt)
 - [x] ⭐ **Repo `Contract` + `ContractDocument`** — hết nợ P1, đủ 9/9 repository
 - [x] Đặt tên file xuất *(`ExportNameGenerator` đã có từ P1; module 4 chỉ dùng, không sửa)*
-- [ ] `GenerateContractUseCase` — xâu 4 mảnh trên thành một giao dịch (§9.11)
-- [ ] `IFileStorage` — Vault mã hoá cho ảnh và `.docx`
+- [x] ⭐ **`IFileStorage` (Port 11) — `EncryptedFileVault` + `path_guard`**, VAULT_KEY riêng, AAD = đường dẫn
+- [x] ⭐ **10 quy tắc `V-CTR-*`** (§8.6) — tập `CONTRACT_GENERATION` hết rỗng
+- [x] ⭐ **`GenerateContractUseCase`** — trọn §9.11, 2 transaction, p95 201–320 ms trên 2 mẫu thật
 - [ ] 62 endpoint
 - [ ] JobRunner (polling bảng job, không Queue)
 
@@ -522,10 +523,10 @@ Lần đầu tiên trong dự án **hai file `.docx` thật được đưa vào 
 - **Snapshot đi vào repo qua `stage_snapshot()`, không gắn lên entity `Contract`** — 20–40 KB chi tiết render mà mọi lời gọi `get()` phải giải mã, kể cả màn hình danh sách.
 - **Repo chặn `snapshot_sha256 = None` bằng `BusinessRuleViolation`, không để asyncpg ném.** `_base.add()` dịch **mọi** `IntegrityError` thành `DuplicateEntityError` "bản ghi đã tồn tại" — sai câu cho một dòng chưa từng được ghi.
 
-**Điểm mù còn lại của module 4:**
-- ⚠️ **Chưa có `GenerateContractUseCase`** — bốn mảnh đã chạy nhưng chưa ai xâu chúng lại thành một giao dịch (§9.11). Đó là module 7.
+**Điểm mù còn lại của module 4** *(hai mục đầu đã đóng ở module 6)*:
+- ✅ ~~Chưa có `GenerateContractUseCase`~~ — **xong ở module 6**.
+- ✅ ~~Chưa có `IFileStorage`~~ — **xong ở module 6**; `.docx` đi thẳng vào Vault dưới dạng byte, không qua file rõ.
 - ⚠️ **Hai repo mới chưa chạy trên PostgreSQL thật** — cùng lý do cũ (cụm 55432 không chạy). `render_snapshot_enc` NOT NULL, AAD gắn theo `contract.id`, và `uq_contract_document__type` đều là thứ chỉ CSDL thật xác nhận được.
-- ⚠️ **Chưa có `IFileStorage`**, nên `DocxRenderer` ghi ra **đường dẫn trần**, chưa mã hoá vào Vault. §9.11 bước H đòi ghi bản mã; hiện mới có write-temp → verify → rename.
 - ⚠️ **Chưa có golden file** (§9.18). Phép đối chứng với `docxtpl` bắt được thay đổi *nội dung*, không bắt được thay đổi *bố cục* — và bố cục là thứ duy nhất người dùng nhìn thấy.
 
 **Risks:**
@@ -533,6 +534,59 @@ Lần đầu tiên trong dự án **hai file `.docx` thật được đưa vào 
 - ⚠️ **Hợp đồng ĐẦU TIÊN dùng một mẫu tốn 4–6.5 s** (pha chuẩn bị). Chấp nhận được, nhưng đừng đo p95 bằng lần chạy đầu, và cân nhắc làm ấm lúc khởi động ở P5.
   - ⚠️ Máy đích thật vẫn **chưa biết**, và p95 từng lệch 1.7 lần giữa hai lần chạy giống hệt nhau. Đừng chốt hay bác bỏ chỉ tiêu này bằng một lần chạy.
 - ✅ ~~🟠 LibreOffice thiếu font tiếng Việt~~ — **đóng 2026-08-11 (D2.1)**: gỡ hẳn khâu xuất PDF, rủi ro biến mất cùng thứ sinh ra nó
+
+#### ⭐ Module 6 — `EncryptedFileVault` (Port 11) + `GenerateContractUseCase` (2026-08-11)
+
+**Mảnh áp chót của P3.** Bốn mảnh của module 4 đã render được `.docx` nhưng không ai xâu chúng lại, và file vẫn nằm trần trên đĩa. Module này đóng cả hai: hợp đồng đi trọn `GENERATING → COMPLETED`, file nằm trong Vault mã hoá, 10 quy tắc `V-CTR-*` gác cửa.
+
+| Thành phần | Vai |
+|---|---|
+| `infrastructure/storage/path_guard.py` | Hình dạng → `resolve()` → `is_relative_to()` (§10.4.2) |
+| `infrastructure/storage/encrypted_file_vault.py` | ⭐ Port 11 — AES-256-GCM dưới **VAULT_KEY** riêng |
+| `domain/validation/contract_rules.py` | ⭐ 10 quy tắc `V-CTR-*` (§8.6) — tập `CONTRACT_GENERATION` hết rỗng |
+| `application/use_cases/contract/generate_contract.py` | ⭐ Trọn §9.11, 2 transaction |
+| `dto/contract.py` | `GenerateContractCommand` · `PartyRequest` · `GeneratedContract` |
+| `ports/documents.py` | ⭐ `render_to_bytes()` + `RenderedDocument` |
+| `unit_of_work.py` · `container.py` · `settings.py` | Nối dây: `contracts`/`contract_documents`, `file_storage`, `vault_dir`/`templates_dir` |
+
+**Đo thật** (`verify_contract_generation.py`, `EncryptedFileVault` thật trên thư mục tạm, 2 lần chạy):
+
+| | `01A_HD_GDN` | `01A_HD_GDKQ` |
+|---|---|---|
+| Nguội | 3.1 s | 4.7–5.8 s |
+| ⭐ Ấm p50 | **179 / 189 ms** | **221 / 239 ms** |
+| ⭐ Ấm p95 | **201 / 279 ms** | **267 / 320 ms** |
+| Kích thước | 893 KB | 591 KB |
+
+Ngân sách §9.11 là "201 sau ~500 ms" ⇒ **đạt, dư gấp đôi**. Mọi phép kiểm ✅: mở được bằng `python-docx`, 12/9 biến khai báo đều có giá trị, STK in đậm, `file_sha256` khớp bản rõ và **không** khớp ciphertext, **0 file `.docx` rõ trên đĩa**, 0 file `.tmp`, đường thất bại §9.16 để lại `GENERATION_FAILED` với 0 file mồ côi.
+
+⭐ **Ghi Vault mã hoá gần như miễn phí.** Đo lại riêng bộ render **trong cùng phiên máy**: p50 256/172 ms, p95 371/217 ms — trùng dải với toàn chuỗi. ⚠️ Và đừng so với 291/324 ms của module 4 rồi kết luận "đã nhanh hơn": cùng một đoạn mã, không sửa dòng nào, chênh lệch là **phương sai của máy 4 nhân/4 GB**.
+
+**Năm phát hiện:**
+
+1. 🔴🔴 **Port 11 và Port 12 đúng riêng lẻ nhưng không ghép được.** `render()` ghi ra **đường dẫn**, `save()` nhận **byte**; bắc cầu theo đúng đặc tả chỉ có một cách — render ra file tạm rồi đọc lại — tức là đặt **một hợp đồng không mã hoá lên NTFS**, nơi file đã xoá vẫn khôi phục được. Mâu thuẫn §4.8.3 ("toàn bộ file trong Vault" thuộc cột 🔒) và mối đe doạ T9. Thêm `render_to_bytes()`; `render()` giữ nguyên chữ ký, trở thành `render_to_bytes()` + write-verify-rename, dành cho bản xem thử §9.10 vốn **cố ý** là file rõ.
+   - ⭐ Chỗ để phát hiện loại lỗi này là **kiểu dữ liệu ở đường nối giữa hai Port**. `str` gặp `bytes`, và thứ duy nhất bắc được cầu là một file mà không ai muốn có.
+2. ⭐⭐ **Vault phải dùng VAULT_KEY, không dùng `ICryptoService`.** Phản xạ là truyền service vào — nó đã có `encrypt`/`decrypt` với AAD, đã kiểm thử, đã nằm trong Container. Nhưng §4.8.1 dựng cây khoá 3 nhánh và `encrypt()` là nhánh **dùng thẳng KEK** (mã hoá ô PII). Gọi nó từ Vault sẽ mã hoá mọi ảnh CCCD và mọi hợp đồng dưới cùng khoá với các cột PII — **xoá bỏ đúng sự tách biệt cây khoá tồn tại để tạo ra**, mà không một dòng code nào trông sai. `DpapiCryptoService.vault_key` đã có sẵn từ P1; Container truyền **giá trị**, không truyền service. Có test riêng (`test_vault_key_is_not_the_kek`) chặn đường "đơn giản hoá" này.
+   - ⭐ **AAD là `relative_path`, không phải UUID** — gồm cả category lẫn ngày, nên một `.enc` chép từ `card_image/…` sang `contract_document/…` **thất bại xác thực** thay vì giải mã vào nhầm chỗ. Cùng lớp phòng thủ như AAD của `ocr_field`, áp cho hệ thống file.
+   - ⭐ `save()` **giải mã thử một lần** sau khi ghi. Đó là thứ duy nhất chứng minh AAD lúc ghi khớp AAD lúc đọc; sai thì file ghi sạch, hash sạch, và hỏng **im lặng** cho tới khi ai đó xin lại hợp đồng vài năm sau (P-09). Chi phí dưới 1 ms cho 900 KB.
+3. ⚠️ **Trên Windows, `gốc / tương_đối` không bảo vệ gì.** `PureWindowsPath("C:/vault") / "C:/Windows/x"` ra `C:/Windows/x`; `… / "/Windows/x"` cũng vậy — vế phải tuyệt đối **thay thế** vế trái. `resolve()` + `is_relative_to()` vẫn bắt được cả ba dạng, nhưng **chỉ nhờ phép kiểm thứ hai**; đọc bước ghép rồi kết luận "đã ghép vào gốc nên nằm trong gốc" là suy luận sai và dễ lan sang chỗ khác. Nên `path_guard` kiểm **hình dạng trước** bằng regex chốt `{category}/{yyyy}/{mm}/{dd}/{uuid}.enc`: chuỗi không do hệ thống sinh ra **không bao giờ trở thành một `Path`**. Có test khẳng định chính hành vi pathlib đó, để ngày nó đổi thì test lên tiếng chứ không phải chốt chặn âm thầm mất một lớp.
+4. ⭐⭐ **Hai transaction, và lý do khác hẳn `ProcessOcrSessionUseCase`.** §12.14.1 tách vì thời lượng (9.5 s giữ một kết nối pool). Ở đây tách vì §9.16 đòi render hỏng để lại hợp đồng ở `GENERATION_FAILED` — mà trong một transaction, ngoại lệ rollback **xoá luôn dòng vừa INSERT** và không còn gì mang trạng thái đó. Nghĩa là trạng thái `GENERATING` của §9.11 **không phải trang trí**: nó tồn tại chính xác vì dòng phải được commit **trước** việc có thể hỏng. Ghi thành ngoại lệ §12.14.2 trong tài liệu.
+   - ⚠️ Cái giá: ghi Vault xong mà transaction 2 hỏng để lại một `.enc` mồ côi ⇒ **xoá file khi transaction ghi sổ hỏng** (nỗ lực tốt nhất). Không có dòng `contract_document` thì nó là rác đã mã hoá, và để lại sẽ thành một sai lệch **giả** trong job đối chiếu §9.15.
+   - ⭐ Quy tắc chặn ném **trước khi ghi dòng nào**, nên rollback huỷ luôn lần tăng `contract_no_seq` — đúng ý: một yêu cầu bị từ chối **không được đốt một số hợp đồng** (cột UNIQUE; khoảng trống không giải thích được khi kiểm toán).
+5. ⚠️⚠️ **Bẫy mẫu số lần thứ 5 — và lại nằm trong bộ đo.** `verify_contract_generation.py` kiểm "số hợp đồng có xuất hiện trong văn bản" và báo đỏ trên **cả hai tài liệu hoàn toàn đúng**. Quét lại bằng Port 20: `01A_HD_GDN` khai 12 biến, `01A_HD_GDKQ` khai 9 — **không mẫu nào dùng `{{contract_no}}`**. Khớp §9.14.1: số hợp đồng là định danh **nội bộ** (nhật ký, tra cứu, mã truy vết), không phải thứ in ra trang. Bộ đo khẳng định một điều mà mẫu chưa bao giờ hứa. Đổi phép kiểm thành: **mọi biến chính mẫu khai báo** đều có giá trị trong văn bản.
+   - ⚠️ Lỗi thứ hai cùng lần: phép quét "có `.docx` rõ nào trên đĩa không" duyệt cả workspace nên bắt phải **Template Store của mẫu kia** — mà template thì **đúng là** file rõ theo thiết kế (§11). Cả hai đều là bộ đo sai, không phải code sai.
+
+**Ba quyết định có chủ ý:**
+- **Không xây `PlainFileVault`** dù §12.19 từng liệt kê — Container không có chế độ dev (P-11), y như quyết định đã chốt ở P1 cho `NullCryptoService`. Hiện thực fake bắt buộc là `InMemoryFileStorage` trong fixtures.
+- **`V-CTR-002` chỉ kiểm "file tồn tại" ở tầng quy tắc, phần checksum để `DocxRenderer` lo.** Đọc file để băm ở tầng quy tắc là nhân đôi I/O của mọi lần sinh hợp đồng — mà renderer vốn đã băm (khoá đệm là `(đường dẫn, sha256)`) và ném `TemplateChecksumMismatchError`.
+- **`contract.contract_date` NOT NULL vẫn được ghi, dù `{{contract_date}}` bị `suppressed`.** Cột ghi **khi nào hợp đồng được lập**; tài liệu để trống dòng ngày cho người dùng ký tay. Hai câu hỏi khác nhau, không phải mâu thuẫn.
+
+**Bốn cổng kiểm tra:** 1499 test xanh (+71) · ruff sạch · `mypy --strict` 85 file 0 lỗi · import-linter 4/4 hợp đồng giữ nguyên. Coverage: `contract_rules.py` **100%**, `generate_contract.py` 96%, `encrypted_file_vault.py` 92%, `path_guard.py` 93%.
+
+**Điểm mù còn lại:**
+- ⚠️ **Chưa chạy trên PostgreSQL thật** — cụm 55432 vẫn không chạy. `get_for_update()` (`SELECT … FOR UPDATE`) là thứ **chỉ** CSDL thật kiểm được: fake UoW không có khoá dòng, nên đường đua hai hợp đồng cùng lúc chưa từng được thử.
+- ⚠️ **`GeneratedContract` chưa ai tiêu thụ** — nó là hình dạng của body `201` ở §5.3.8, và endpoint là module 7.
+- ⚠️ **Ảnh CCCD vẫn chưa đi vào Vault.** Port 11 đã có và `VaultCategory.CARD_IMAGE` đã khai, nhưng luồng upload (module 7) mới là nơi gọi nó. P-05 (xoá ảnh gốc sau khi sinh hợp đồng) vì thế cũng chưa nối được.
 
 ---
 

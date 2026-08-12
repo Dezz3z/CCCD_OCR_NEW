@@ -64,8 +64,10 @@ cocas/
 │   │   │   ├── documents/
 │   │   │   │   ├── template_inspector.py     # ⭐ Port 20 — AST Jinja2 + quét marker
 │   │   │   │   ├── docx_context_adapter.py   # ⭐ StyledValue → docxtpl.RichText
-│   │   │   │   ├── docx_renderer.py
-│   │   │   ├── storage/              #    encrypted_file_vault.py · path_guard.py
+│   │   │   │   ├── docx_renderer.py          # ⭐ Port 12 — hai pha, trả byte (§12.11.2)
+│   │   │   ├── storage/              # ⭐ Port 11
+│   │   │   │   ├── path_guard.py             #    hình dạng → resolve → is_relative_to
+│   │   │   │   └── encrypted_file_vault.py   #    AES-256-GCM dưới VAULT_KEY riêng
 │   │   │   ├── security/             #    dpapi.py · crypto.py · blind_index.py
 │   │   │   │                         #    local_token.py
 │   │   │   ├── queue/                #    job_runner.py  ⭐ polling bảng `job`

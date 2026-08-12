@@ -331,6 +331,7 @@ Bản D2.0 viết `build(contract_draft, template: TemplateVersion)`. **Hai tron
 | Mục | Nội dung |
 |---|---|
 | **Tầng** | Infrastructure |
+| **Phương thức** | ⭐ `render_to_bytes(template_path: str, context: dict, expected_sha256: bytes \| None = None) -> RenderedDocument` — xem §12.11.2 |
 | **Phương thức** | ⭐ `render(template_path: str, context: dict, output_path: str, expected_sha256: bytes \| None = None) -> RenderResult` |
 | **Tiền điều kiện** | File mẫu tồn tại · SHA-256 khớp CSDL · thư mục đích ghi được · còn ≥ 100 MB đĩa |
 | **Hậu điều kiện** | File tại `output_path` tồn tại, mở được bằng `python-docx`, SHA-256 khớp `RenderResult.sha256` |
@@ -338,7 +339,7 @@ Bản D2.0 viết `build(contract_draft, template: TemplateVersion)`. **Hai tron
 | **Môi trường Jinja2** | ⭐ `SandboxedEnvironment` · danh sách trắng 10 bộ lọc · `undefined` trả chuỗi rỗng · *(xem §9.12.2 về timeout)* |
 | **Ném ra** | `TemplateNotFoundError` · `TemplateChecksumMismatchError` · `RenderError` · `InsufficientStorageError` · ⭐ `DocumentIntegrityError` |
 | **Luồng** | ⭐ Chạy trong `run_in_executor` — CPU-bound, không chặn event loop |
-| **Đầu ra** | `RenderResult{ output_path, sha256, size_bytes, duration_ms }` |
+| **Đầu ra** | `RenderedDocument{ content, sha256, size_bytes, duration_ms }` · `RenderResult{ output_path, sha256, size_bytes, duration_ms }` |
 
 > ⭐ **`expected_sha256` là tham số, không phải thứ bộ render tự tra được.** §12.11 bản D2.0 vừa đặt "SHA-256 khớp CSDL" làm tiền điều kiện vừa liệt kê `TemplateChecksumMismatchError` trong danh sách ném ra — nhưng chữ ký `render(template_path, context, output_path)` không có chỗ nào nhận giá trị đối chiếu, và Infrastructure **không được** tự đọc CSDL để lấy. Không thêm tham số thì tiền điều kiện đó không ai kiểm và ngoại lệ đó không bao giờ ném.
 
@@ -352,6 +353,30 @@ Xem §9.12.1 để biết số đo và lý do. Tóm tắt hợp đồng của l�
 | `render` | mẫu đã `prepare` + ngữ cảnh | **0.31–0.64 s** | không |
 
 ⚠️ **Khoá đệm phải gồm SHA-256, không chỉ đường dẫn.** Đăng ký một phiên bản mẫu mới ghi ra file khác nên đường dẫn khác — nhưng khôi phục sao lưu, sửa file tại chỗ hoặc hỏng đĩa thì **đường dẫn giữ nguyên còn nội dung đổi**. Đệm theo đường dẫn sẽ render bản cũ, im lặng, cho tới khi khởi động lại tiến trình.
+
+### 🔴🔴 12.11.2. `render_to_bytes` — vì sao Port 12 phải trả BYTE, không chỉ ghi file
+
+**Port 11 và Port 12 được đặc tả độc lập và KHÔNG ghép được với nhau.** Phát hiện khi nối chúng ở P3 module 6:
+
+| Port | Đầu ra / đầu vào |
+|---|---|
+| `IDocumentRenderer.render(...)` | ghi ra **một đường dẫn file** |
+| `IFileStorage.save(data: bytes, …)` | nhận **byte** |
+
+Ghép hai thứ đó theo đúng đặc tả chỉ có một cách: render ra file tạm → đọc lại → mã hoá → `save()` → xoá file tạm. Nghĩa là **một bản hợp đồng KHÔNG mã hoá nằm trên đĩa** trong khoảng đó — mâu thuẫn trực tiếp với:
+
+- §4.8.3 *"Toàn bộ file trong Vault"* thuộc cột 🔒 **mã hoá**;
+- §10 mối đe doạ **T9** liệt kê *"file tạm không dọn"*, và biện pháp ghi rõ *"file tạm trong Vault mã hoá"*;
+- P-13 — dữ liệu không rời khỏi máy, và trên NTFS **file đã xoá vẫn khôi phục được**.
+
+⭐ **Sửa:** Port 12 thêm `render_to_bytes()`. `render()` giữ nguyên chữ ký và trở thành `render_to_bytes()` + *write-temp → verify → rename*, nên bất biến cũ không đổi và không có mã nào bị nhân đôi.
+
+| Ai gọi gì | Vì sao |
+|---|---|
+| `GenerateContractUseCase` → `render_to_bytes()` | byte đi thẳng vào `EncryptedFileVault.save()`; **không có bản rõ nào chạm đĩa** |
+| Xem thử mẫu (§9.10) → `render()` | bản xem thử **cố ý** là file rõ ngoài Vault, xoá sau 5 phút |
+
+> ⭐ **Bài học tổng quát:** hai Port đúng riêng lẻ vẫn có thể sai khi ghép. Chỗ để phát hiện là **kiểu dữ liệu ở đường nối** — ở đây `str` (đường dẫn) gặp `bytes`, và cái duy nhất bắc được cầu là một file trên đĩa mà không ai muốn có.
 
 ---
 
@@ -376,13 +401,53 @@ Xem §9.12.1 để biết số đo và lý do. Tóm tắt hợp đồng của l�
 |---|---|
 | **Tầng** | Domain (Port `IFileStorage`) · hiện thực `EncryptedFileVault` |
 | **Phương thức** | `save(data: bytes, category: VaultCategory) -> VaultRef` · `load(ref: VaultRef) -> bytes` · `delete(ref: VaultRef) -> None` · `exists(ref) -> bool` |
-| **Tiền điều kiện** | Khoá Vault đã nạp từ DPAPI |
+| **Tiền điều kiện** | ⭐ **VAULT_KEY** đã dẫn xuất từ KEK (§4.8.1) — xem §12.13.1 |
 | **Hậu điều kiện** | `VaultRef.relative_path` có dạng `{category}/{yyyy}/{mm}/{dd}/{uuid}.enc` |
 | **Bất biến** | ⭐ Tên file **luôn** là UUID — không bao giờ chứa dữ liệu do người dùng kiểm soát |
-| **Bất biến** | ⭐ `load()` **luôn** chuẩn hoá đường dẫn (`Path.resolve()`) và kiểm tra nằm trong gốc Vault bằng `is_relative_to()`. Ngoài → `PathTraversalError` |
-| **Bất biến** | Ghi luôn theo mẫu *write-temp → rename* |
+| **Bất biến** | ⭐ `load()` **luôn** kiểm **hình dạng** đường dẫn trước, rồi mới ghép–`resolve()`–`is_relative_to()`. Sai bất kỳ bước nào → `PathTraversalError` (§12.13.2) |
+| **Bất biến** | Ghi luôn theo mẫu *write-temp → verify → rename* |
+| **Bất biến** | ⭐ AAD = **chính `relative_path`** — file dời chỗ thì **không giải mã được**, không phải giải mã ra nội dung của chỗ khác |
 | **Ném ra** | `PathTraversalError` · `VaultFileNotFoundError` · `DecryptionError` · `InsufficientStorageError` |
-| **Không được làm** | ❌ Nhận đường dẫn tuyệt đối từ tham số · ❌ Trả về đường dẫn tuyệt đối cho tầng trên |
+| **Không được làm** | ❌ Nhận đường dẫn tuyệt đối từ tham số · ❌ Trả về đường dẫn tuyệt đối cho tầng trên · ⭐ ❌ **Dùng `ICryptoService.encrypt()`** (§12.13.1) |
+
+### ⭐ 12.13.1. Vault dùng VAULT_KEY, KHÔNG dùng `ICryptoService`
+
+Phản xạ tự nhiên là truyền `ICryptoService` vào Vault — nó đã có `encrypt`/`decrypt` với AAD, đã được kiểm thử, đã có trong Container. **Sai.** §4.8.1 dựng cây khoá với đúng một mục đích:
+
+```
+KEK ─┬─ HKDF("cocas-bidx-v1")  → PEPPER      (blind index)
+     ├─ HKDF("cocas-vault-v1") → VAULT_KEY   ⭐ file trong Vault
+     └─ dùng trực tiếp          → mã hoá Ô DỮ LIỆU PII
+```
+
+`ICryptoService.encrypt()` là **nhánh thứ ba** — nó dùng thẳng KEK. Gọi nó từ Vault sẽ mã hoá mọi ảnh CCCD và mọi hợp đồng dưới cùng khoá với các cột PII, tức là **xoá bỏ đúng sự tách biệt mà cây khoá tồn tại để tạo ra**, mà không có một dòng code nào trông sai.
+
+| | |
+|---|---|
+| Vault nhận | `vault_key: bytes` (32 byte), tự dựng `AESGCM` riêng |
+| Định dạng file | `version(1) ‖ nonce(12) ‖ ciphertext ‖ tag(16)` — **cùng hình dạng** với ô CSDL nhưng **hằng số riêng**: gộp chung sẽ khiến nâng version một bên ép bên kia |
+| AAD | `relative_path` dạng byte UTF-8 |
+| Container | `DpapiCryptoService.vault_key` (đã có sẵn từ P1), truyền **giá trị**, không truyền service |
+
+⭐ **AAD là đường dẫn tương đối, không phải UUID.** Nó bao gồm cả `category` lẫn ngày lẫn UUID, nên một file `.enc` bị chép từ `card_image/…` sang `contract_document/…` **thất bại xác thực** thay vì giải mã sạch — cùng lớp phòng thủ như AAD của `ocr_field` (§12.17), áp cho hệ thống file.
+
+### ⚠️ 12.13.2. Trên Windows, `root / relative` KHÔNG bảo vệ gì cả
+
+`pathlib` cho phép vế phải **thay thế** vế trái khi vế phải tuyệt đối — và trên Windows "tuyệt đối" có hai dạng:
+
+| Biểu thức | Kết quả |
+|---|---|
+| `PureWindowsPath("C:/vault") / "C:/Windows/x"` | `C:/Windows/x` ⚠️ |
+| `PureWindowsPath("C:/vault") / "/Windows/x"` | `C:/Windows/x` ⚠️ |
+| `PureWindowsPath("C:/vault") / "../../Windows/x"` | `C:/vault/../../Windows/x` |
+
+Bước `resolve()` + `is_relative_to()` **vẫn bắt được cả ba** — nhưng chỉ nhờ phép kiểm thứ hai; phép ghép tự nó không đóng góp gì. Vì thế `path_guard.py` kiểm **hình dạng trước**: một biểu thức chính quy chốt đúng `{category}/{yyyy}/{mm}/{dd}/{uuid}.enc`. Thứ không đúng hình dạng đó thì **không phải do ta sinh ra**, và bị từ chối trước khi kịp trở thành một `Path`.
+
+> ⭐ Tách `path_guard.py` khỏi `encrypted_file_vault.py` (§11 đã dự kiến) vì endpoint tải tài liệu (§5.3.9) và job đối chiếu toàn vẹn hàng tuần (§9.15) đều cần đúng phép kiểm này. Một bản sao thứ hai của nó là một bản sao sẽ lệch.
+
+### 12.13.3. Không có `PlainFileVault`
+
+Bảng §12.19 từng ghi hiện thực dev `PlainFileVault`. **Không xây**, cùng lý do đã chốt ở P1 cho `NullCryptoService`: Container không có chế độ dev (P-11 — Windows là lớp xác thực duy nhất, chỉ có một đích triển khai). Hiện thực fake bắt buộc cho Port 11 là `InMemoryFileStorage` trong `tests/fixtures/fake_ports.py`.
 
 ---
 
@@ -435,6 +500,26 @@ Xem §9.12.1 để biết số đo và lý do. Tóm tắt hợp đồng của l�
 ⚠️ **Cái giá phải trả, nói rõ ra:** sự cố **giữa hai transaction** để lại phiên `PROCESSING` vĩnh viễn. Đó đúng là việc của cơ chế phục hồi job treo (§12.15), và mọi công việc chạy dài trong hệ thống đều trả cái giá này.
 
 > **Quy tắc chung rút ra:** một Use Case được phép nhiều hơn một transaction **khi và chỉ khi** giữa chúng là công việc ngoài cơ sở dữ liệu tính bằng giây. Nhiều transaction vì "cho gọn code" thì không.
+
+#### ⭐⭐ 12.14.2. Ngoại lệ thứ hai: `GenerateContractUseCase` — vì **bản ghi lỗi phải sống sót**
+
+`GenerateContractUseCase` (P3 module 6) dùng **hai transaction kẹp lấy việc render + ghi Vault**. Lý do **khác hẳn** §12.14.1 — không phải vì thời lượng, mà vì §9.16 đòi một thứ mà một transaction không thể cho.
+
+§9.16 quy định: *"File mẫu mất trên đĩa → trạng thái hợp đồng `GENERATION_FAILED`"*. Trong **một** transaction, ngoại lệ render sẽ rollback — và rollback **xoá luôn dòng `contract`** vừa INSERT. Không còn dòng nào để mang trạng thái đó. Nghĩa là:
+
+> ⭐ **Trạng thái `GENERATING` của §9.11 không phải trang trí.** Nó tồn tại chính xác vì dòng hợp đồng **phải được commit trước khi bắt đầu việc có thể hỏng** — nếu không, "hợp đồng thất bại" là một khái niệm không lưu trữ được.
+
+| | |
+|---|---|
+| **Transaction 1** | Khoá `contract_template` (`FOR UPDATE`) → cấp `contract_no` → chạy `V-CTR-001..010` → INSERT `contract` (`GENERATING`) + `contract_party` + `render_snapshot_enc` → commit |
+| **(ngoài transaction)** | `render_to_bytes()` (§12.11.2) → `EncryptedFileVault.save()` — ⭐ đây cũng là chỗ §12.14 bắt buộc: *"Thao tác file **không nằm trong** transaction"* |
+| **Transaction 2 — thành công** | INSERT `contract_document` → `mark_completed(snapshot_sha256)` → commit |
+| **Transaction 2 — thất bại** | `mark_generation_failed(code, message)` → commit → **ném lại** ngoại lệ gốc |
+
+⚠️ **Hai cái giá phải trả, nói rõ ra:**
+
+1. Sự cố **giữa** hai transaction để lại hợp đồng `GENERATING` vĩnh viễn — việc của §12.15, y như §12.14.1.
+2. ⭐ Ghi Vault **thành công** rồi transaction 2 **hỏng** để lại một file `.enc` không ai tham chiếu. Bù bằng cách **xoá file Vault khi transaction ghi sổ hỏng** (nỗ lực tốt nhất): không có dòng `contract_document` thì file đó là rác đã mã hoá, không phải chứng từ. Nếu chính lần xoá đó cũng hỏng thì job đối chiếu hàng tuần (§9.15) là lưới cuối.
 
 ---
 
@@ -517,8 +602,8 @@ Xem §9.12.1 để biết số đo và lý do. Tóm tắt hợp đồng của l�
 | 8 | `IReadRepository<T>` | Infrastructure | `SqlAlchemy*ReadRepository` |
 | 9 | `IWriteRepository<T>` | Infrastructure | `SqlAlchemy*WriteRepository` |
 | 10 | `IAliasRepository` | Infrastructure | `SqlAlchemyAliasRepository` (có cache) |
-| 11 | `IFileStorage` | Infrastructure | `EncryptedFileVault` · `PlainFileVault` (dev) |
-| 12 | `IDocumentRenderer` | Infrastructure | `DocxRenderer` ⭐ *(hai pha, có đệm — §9.12.1)* |
+| 11 | `IFileStorage` | Infrastructure | `EncryptedFileVault` ⭐ *(VAULT_KEY riêng — §12.13.1; **không** có `PlainFileVault`, xem §12.13.3)* |
+| 12 | `IDocumentRenderer` | Infrastructure | `DocxRenderer` ⭐ *(hai pha, có đệm — §9.12.1; trả byte — §12.11.2)* |
 | ~~13~~ | 🗑️ ~~`IPdfConverter`~~ | — | **Đã gỡ ở D2.1** (§12.12) — số thứ tự để khuyết có chủ ý |
 | 14 | `IUnitOfWork` | Infrastructure | `SqlAlchemyUnitOfWork` |
 | 15 | `IJobQueue` | Infrastructure | `JobRunner` (polling bảng `job`) |
